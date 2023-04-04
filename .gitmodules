@@ -1,0 +1,6 @@
+[submodule "evaluation/ScanNet"]
+	path = evaluation/ScanNet
+	url = https://github.com/ScanNet/ScanNet
+[submodule "emsanet"]
+	path = emsanet
+	url = https://github.com/TUI-NICR/EMSANet

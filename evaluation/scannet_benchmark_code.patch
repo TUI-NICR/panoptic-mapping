@@ -1,0 +1,1837 @@
+diff -x .git -x addToConfusionMatrix.c -x '*.cpython*' -x build -r -N -u ./ScanNet/BenchmarkScripts/2d_evaluation/addToConfusionMatrix.pyx ./ScanNet_ours/BenchmarkScripts/2d_evaluation/addToConfusionMatrix.pyx
+--- ./ScanNet/BenchmarkScripts/2d_evaluation/addToConfusionMatrix.pyx	1970-01-01 01:00:00.000000000 +0100
++++ ./ScanNet_ours/BenchmarkScripts/2d_evaluation/addToConfusionMatrix.pyx	2022-12-22 10:13:21.796034230 +0100
+@@ -0,0 +1,44 @@
++# cython methods to speed-up evaluation
++
++import numpy as np
++cimport cython
++cimport numpy as np
++import ctypes
++
++np.import_array()
++
++cdef extern from "addToConfusionMatrix_impl.c":
++	void addToConfusionMatrix( const unsigned char* f_prediction_p  ,
++                               const unsigned char* f_groundTruth_p ,
++                               const unsigned int   f_width_i       ,
++                               const unsigned int   f_height_i      ,
++                               unsigned long long*  f_confMatrix_p  ,
++                               const unsigned int   f_confMatDim_i  )
++
++
++cdef tonumpyarray(unsigned long long* data, unsigned long long size):
++	if not (data and size >= 0): raise ValueError
++	return np.PyArray_SimpleNewFromData(2, [size, size], np.NPY_UINT64, <void*>data)
++
++@cython.boundscheck(False)
++def cEvaluatePair( np.ndarray[np.uint8_t , ndim=2] predictionArr   ,
++                   np.ndarray[np.uint8_t , ndim=2] groundTruthArr  ,
++                   np.ndarray[np.uint64_t, ndim=2] confMatrix      ,
++                   evalLabels                                    ):
++	cdef np.ndarray[np.uint8_t    , ndim=2, mode="c"] predictionArr_c
++	cdef np.ndarray[np.uint8_t    , ndim=2, mode="c"] groundTruthArr_c
++	cdef np.ndarray[np.ulonglong_t, ndim=2, mode="c"] confMatrix_c
++
++	predictionArr_c  = np.ascontiguousarray(predictionArr , dtype=np.uint8    )
++	groundTruthArr_c = np.ascontiguousarray(groundTruthArr, dtype=np.uint8    )
++	confMatrix_c     = np.ascontiguousarray(confMatrix    , dtype=np.ulonglong)
++
++	cdef np.uint32_t height_ui     = predictionArr.shape[1]
++	cdef np.uint32_t width_ui      = predictionArr.shape[0]
++	cdef np.uint32_t confMatDim_ui = confMatrix.shape[0]
++
++	addToConfusionMatrix(&predictionArr_c[0,0], &groundTruthArr_c[0,0], height_ui, width_ui, &confMatrix_c[0,0], confMatDim_ui)
++
++	confMatrix = np.ascontiguousarray(tonumpyarray(&confMatrix_c[0,0], confMatDim_ui))
++
++	return np.copy(confMatrix)
+diff -x .git -x addToConfusionMatrix.c -x '*.cpython*' -x build -r -N -u ./ScanNet/BenchmarkScripts/2d_evaluation/evalInstanceLevelSemanticLabeling.py ./ScanNet_ours/BenchmarkScripts/2d_evaluation/evalInstanceLevelSemanticLabeling.py
+--- ./ScanNet/BenchmarkScripts/2d_evaluation/evalInstanceLevelSemanticLabeling.py	2023-03-16 13:59:38.130726346 +0100
++++ ./ScanNet_ours/BenchmarkScripts/2d_evaluation/evalInstanceLevelSemanticLabeling.py	2023-04-03 16:18:06.495054664 +0200
+@@ -18,7 +18,7 @@
+ # - The given paths "relPathPrediction" point to images that contain
+ # binary masks for the described predictions, where any non-zero is
+ # part of the predicted instance. The paths must not contain spaces,
+-# must be relative to the root directory and must point to locations 
++# must be relative to the root directory and must point to locations
+ # within the root directory.
+ # - The label IDs "labelIDPrediction" specify the class of that mask
+ # - The field "confidencePrediction" is a float value that assigns a
+@@ -39,22 +39,30 @@
+ try:
+     import numpy as np
+ except:
+-    print "Failed to import numpy package."
++    print("Failed to import numpy package.")
+     sys.exit(-1)
+ try:
+     from PIL import Image
+ except:
+-    print "Please install the module 'Pillow' for image processing, e.g."
+-    print "pip install pillow"
++    print("Please install the module 'Pillow' for image processing, e.g.")
++    print("pip install pillow")
+     sys.exit(-1)
+ 
+ from instances2dict import instances2dict
++from instance import load_gt_image
+ 
++import inspect
++currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
++parentdir = os.path.dirname(currentdir)
++sys.path.insert(0,parentdir)
++import util
+ 
+ parser = argparse.ArgumentParser()
+ parser.add_argument('--gt_path', required=True, help='path to gt files')
+ parser.add_argument('--pred_path', required=True, help='path to result files')
+ parser.add_argument('--output_file', default='', help='output file (default pred_path/semantic_instance.txt')
++parser.add_argument('--dataset', type=str, help="Name of the dataset")
++parser.add_argument('--shift', type=int, default=1<<16, help="Shift used for semantic id for panoptic id.")
+ opt = parser.parse_args()
+ if not opt.output_file:
+     opt.output_file = os.path.join(opt.pred_path, 'semantic_instance.txt')
+@@ -63,13 +71,16 @@
+ ######################
+ # Parameters
+ ######################
++CLASS_LABELS, VALID_CLASS_IDS = util.get_valid_classes_for_semantic_instance(opt.dataset)
+ 
+-CLASS_LABELS = ['cabinet', 'bed', 'chair', 'sofa', 'table', 'door', 'window', 'bookshelf', 'picture', 'counter', 'desk', 'curtain', 'refrigerator', 'shower curtain', 'toilet', 'sink', 'bathtub', 'otherfurniture']
+-VALID_CLASS_IDS = np.array([3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 24, 28, 33, 34, 36, 39])
++# CLASS_LABELS = ['cabinet', 'bed', 'chair', 'sofa', 'table', 'door', 'window', 'bookshelf', 'picture', 'counter', 'desk', 'curtain', 'refrigerator', 'shower curtain', 'toilet', 'sink', 'bathtub', 'otherfurniture']
++# VALID_CLASS_IDS = np.array([3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 24, 28, 33, 34, 36, 39])
+ ID2LABEL = {}
+ for i in range(len(CLASS_LABELS)):
+     ID2LABEL[VALID_CLASS_IDS[i]] = CLASS_LABELS[i]
+ 
++SHIFT = opt.shift
++
+ # overlaps for evaluation
+ opt.overlaps           = np.arange(0.5,1.,0.05)
+ # minimum region size for evaluation [pixels]
+@@ -148,13 +159,13 @@
+     gtInstances = {}
+     # if there is a global statistics json, then load it
+     if (os.path.isfile(opt.gtInstancesFile)):
+-        print "Loading ground truth instances from JSON."
++        print("Loading ground truth instances from JSON.")
+         with open(opt.gtInstancesFile) as json_file:
+             gtInstances = json.load(json_file)
+     # otherwise create it
+     else:
+-        print "Creating ground truth instances from png files."
+-        gtInstances = instances2dict(groundTruthList, CLASS_LABELS, VALID_CLASS_IDS)
++        print("Creating ground truth instances from png files.")
++        gtInstances = instances2dict(groundTruthList, CLASS_LABELS, VALID_CLASS_IDS, verbose=True, shift=SHIFT)
+         writeDict2JSON(gtInstances, opt.gtInstancesFile)
+ 
+     return gtInstances
+@@ -171,7 +182,7 @@
+ # match ground truth instances with predicted instances
+ def matchGtWithPreds(predictionList,groundTruthList,gtInstances):
+     matches = {}
+-    print "Matching {} pairs of images...".format(len(predictionList))
++    print("Matching {} pairs of images...".format(len(predictionList)))
+ 
+     count = 0
+     for (pred,gt) in zip(predictionList,groundTruthList):
+@@ -179,7 +190,8 @@
+         dictKey = os.path.abspath(gt)
+ 
+         # Read input files
+-        gtImage  = readGTImage(gt)
++        # gtImage  = readGTImage(gt)
++        gtImage  = load_gt_image(gt, shift=SHIFT)
+         predInfo = readPredInfo(pred)
+ 
+         # Get and filter ground truth instances
+@@ -197,7 +209,7 @@
+         count += 1
+         sys.stdout.write("\rImages Processed: {}".format(count))
+         sys.stdout.flush()
+-    print ""
++    print("")
+ 
+     return matches
+ 
+@@ -341,7 +353,7 @@
+ 
+     # Here we hold the results
+     # First dimension is class, second overlap
+-    ap = np.zeros( (len(distThs) , len(CLASS_LABELS) , len(overlaps)) , np.float )
++    ap = np.zeros( (len(distThs) , len(CLASS_LABELS) , len(overlaps)) , np.float32 )
+ 
+     for dI,(minRegionSize,distanceTh,distanceConf) in enumerate(zip(minRegionSizes,distThs,distConfs)):
+         for (oI,overlapTh) in enumerate(overlaps):
+@@ -358,7 +370,7 @@
+                     predInstances = matches[img]["prediction" ][labelName]
+                     gtInstances   = matches[img]["groundTruth"][labelName]
+                     # filter groups in ground truth
+-                    gtInstances   = [ gt for gt in gtInstances if gt["instID"]>=1000 and gt["pixelCount"]>=minRegionSize and gt["medDist"]<=distanceTh and gt["distConf"]>=distanceConf ]
++                    gtInstances   = [ gt for gt in gtInstances if gt["instID"]>=SHIFT and gt["pixelCount"]>=minRegionSize and gt["medDist"]<=distanceTh and gt["distConf"]>=distanceConf ]
+ 
+                     if gtInstances:
+                         haveGt = True
+@@ -414,7 +426,7 @@
+                             nbIgnorePixels = pred["voidIntersection"]
+                             for gt in pred["matchedGt"]:
+                                 # group?
+-                                if gt["instID"] < 1000:
++                                if gt["instID"] < SHIFT:
+                                     nbIgnorePixels += gt["intersection"]
+                                 # small ground truth instances
+                                 if gt["pixelCount"] < minRegionSize or gt["medDist"]>distanceTh or gt["distConf"]<distanceConf:
+@@ -519,38 +531,38 @@
+     col1    = ":" #(":"         if not opt.csv   else ")
+     lineLen = 50
+ 
+-    print ""
++    print("")
+     #if not args.csv:
+     #    print "#"*lineLen)
+-    print "#"*lineLen
++    print("#"*lineLen)
+     line  = ""
+     line += "{:<15}".format("what"      ) + sep + col1
+     line += "{:>15}".format("AP"        ) + sep
+     line += "{:>15}".format("AP_50%"    ) + sep
+-    print line
++    print(line)
+     #if not args.csv:
+     #    print "#"*lineLen)
+-    print "#"*lineLen
++    print("#"*lineLen)
+ 
+     for (lI,labelName) in enumerate(CLASS_LABELS):
+         apAvg  = avgDict["classes"][labelName]["ap"]
+         ap50o  = avgDict["classes"][labelName]["ap50%"]
+         line  = "{:<15}".format(labelName) + sep + col1
+-        line += sep + "{:>15.3f}".format(apAvg ) + sep
+-        line += sep + "{:>15.3f}".format(ap50o ) + sep
+-        print line
++        line += sep + "{:>15.4f}".format(apAvg ) + sep
++        line += sep + "{:>15.4f}".format(ap50o ) + sep
++        print(line)
+ 
+     allApAvg  = avgDict["allAp"]
+     allAp50o  = avgDict["allAp50%"]
+ 
+     #if not args.csv:
+     #    print "-"*lineLen)
+-    print "-"*lineLen
+-    line  = "{:<15}".format("average") + sep + col1 
+-    line += "{:>15.3f}".format(allApAvg)  + sep 
+-    line += "{:>15.3f}".format(allAp50o)  + sep
+-    print line
+-    print ""
++    print("-"*lineLen)
++    line  = "{:<15}".format("average") + sep + col1
++    line += "{:>15.4f}".format(allApAvg)  + sep
++    line += "{:>15.4f}".format(allAp50o)  + sep
++    print(line)
++    print("")
+ 
+ def prepareJSONDataForResults(avgDict, aps):
+     JSONData = {}
+@@ -565,6 +577,17 @@
+     return JSONData
+ 
+ def writeResultToFile(result, output_file):
++    # dump results to json file
++    json_filepath = output_file.replace('.txt', '.json')
++    with open(json_filepath, 'w') as f:
++        json.dump(
++            {'argv': sys.argv, 'results': result},
++            f,
++            default=lambda v: float(v),   # handle numpy.float32 -> float
++            indent=4
++        )
++
++    # dump results to txt (csv) file
+     _SPLITTER = ','
+     with open(output_file, 'w') as f:
+         f.write(_SPLITTER.join(['class', 'class id', 'ap', 'ap50']) + '\n')
+@@ -610,6 +633,7 @@
+         for file in files:
+             if file.endswith(".txt"):
+                  pred_files.append(os.path.join(root, file))
++
+     gt_files = []
+     if len(pred_files) == 0:
+         printError("No result files found.", user_fault=True)
+@@ -622,8 +646,8 @@
+     #print gt_files
+ 
+     # print some info for user
+-    print "Note that this tool uses the file '{}' to cache the ground truth instances.".format(opt.gtInstancesFile)
+-    print "If anything goes wrong, or if you change the ground truth, please delete the file."
++    print("Note that this tool uses the file '{}' to cache the ground truth instances.".format(opt.gtInstancesFile))
++    print("If anything goes wrong, or if you change the ground truth, please delete the file.")
+ 
+     # evaluate
+     evaluateImgLists(pred_files, gt_files)
+diff -x .git -x addToConfusionMatrix.c -x '*.cpython*' -x build -r -N -u ./ScanNet/BenchmarkScripts/2d_evaluation/evalPanopticLevelSemanticLabeling.py ./ScanNet_ours/BenchmarkScripts/2d_evaluation/evalPanopticLevelSemanticLabeling.py
+--- ./ScanNet/BenchmarkScripts/2d_evaluation/evalPanopticLevelSemanticLabeling.py	1970-01-01 01:00:00.000000000 +0100
++++ ./ScanNet_ours/BenchmarkScripts/2d_evaluation/evalPanopticLevelSemanticLabeling.py	2023-03-31 17:56:18.448926522 +0200
+@@ -0,0 +1,251 @@
++# -*- coding: utf-8 -*-
++"""
++.. codeauthor:: Soehnke Fischedick <soehnke-benedikt.fischedick@tu-ilmenau.de>
++.. codeauthor:: Daniel Seichter <daniel.seichter@tu-ilmenau.de>
++"""
++import argparse
++import json
++import os
++import sys
++
++import cv2
++import numpy as np
++import torch
++
++from tqdm import tqdm
++
++from nicr_mt_scene_analysis.metric import MeanIntersectionOverUnion
++from nicr_mt_scene_analysis.metric import PanopticQuality
++from nicr_mt_scene_analysis.utils.panoptic_merge import \
++    deeplab_merge_semantic_and_instance
++import nicr_scene_analysis_datasets
++
++
++def parse_args():
++    parser = argparse.ArgumentParser(
++        description='Evaluate 2D panoptic segmentation results.'
++    )
++    parser.add_argument('--pred_path',  # _ for compatibility to other scripts
++                        type=str,
++                        required=True,
++                        help='path to prediction files')
++    parser.add_argument('--gt_path',  # _ for compatibility to other scripts
++                        type=str,
++                        required=True,
++                        help='path to ground truth files')
++    parser.add_argument('--output_file',  # _ for compatibility to other scripts
++                        type=str,
++                        default='output.json',
++                        help='path to output file')
++    parser.add_argument('--dataset',
++                        type=str,
++                        required=True,
++                        help='dataset name')
++    parser.add_argument('--shift',
++                        type=int,
++                        default=(1 << 16),
++                        help='shift for combining semantic and instance ids')
++    parser.add_argument('--sanity-check',
++                        type=bool,
++                        default=True,
++                        help='whether to perform sanity check on predictions')
++    parser.add_argument('--batch-size',
++                        type=int,
++                        default=16)
++
++    return parser.parse_args()
++
++
++def main():
++    args = parse_args()
++
++    gt_files = sorted(os.listdir(args.gt_path))
++    pred_files = sorted(os.listdir(args.pred_path))
++    if args.sanity_check:
++        assert gt_files == pred_files
++
++    # Make all paths absolute
++    gt_files = [os.path.join(args.gt_path, f) for f in gt_files]
++    pred_files = [os.path.join(args.pred_path, f) for f in pred_files]
++
++    results = evaluate(gt_files, pred_files, args)
++
++    # Iterate over the dictionary to make it json serializable
++    # If the tensor only has one element, we will read the item, otherwise
++    # we will convert it to a list
++    output_dict = {}
++    for k, v in results.items():
++        if isinstance(v, torch.Tensor):
++            if v.numel() == 1:
++                output_dict[k] = v.item()
++            else:
++                output_dict[k] = v.tolist()
++        else:
++            output_dict[k] = v
++
++    # Save output as json
++    with open(args.output_file, 'w') as f:
++        json.dump(output_dict, f, indent=4)
++    print(f"Wrote results file: '{args.output_file}'")
++
++    # print output
++    keys_to_print = (
++        'panoptic_all_with_gt_pq',
++        'panoptic_all_with_gt_rq',
++        'panoptic_all_with_gt_sq',
++        'panoptic_miou'
++    )
++    for k in keys_to_print:
++        print(f"{k+': ':>25} {output_dict[k]}")
++
++
++def chunker(seq, size):
++    return (seq[pos:pos + size] for pos in range(0, len(seq), size))
++
++
++def evaluate(gt_files, pred_files, args):
++    # Get the dataset class for the specified dataset
++    dataset = get_dataset(args.dataset)
++    is_thing = np.array(dataset.config.semantic_label_list.classes_is_thing)
++    thing_ids = np.where(is_thing)[0]
++    stuff_ids = np.where(~is_thing)[0]
++    ignore_ids = []
++    if args.dataset == 'scannet':
++        # Because the 20 classes subset is used, we need to ignore the
++        # classes that are not in the subset.
++        ignore_ids = [k for k, v in
++                      dataset.SEMANTIC_CLASSES_40_MAPPING_TO_BENCHMARK.items()
++                      if v == 0]
++    # Initialize metrics. MeanIntersectionOverUnion is more for a sanity check
++    # and can be compared to the official scannet evaluation script.
++    pq = PanopticQuality(num_categories=dataset.semantic_n_classes,
++                         ignored_label=0,
++                         max_instances_per_category=args.shift,
++                         offset=256**3,
++                         is_thing=is_thing,
++                         num_workers=args.batch_size)
++
++    miou = MeanIntersectionOverUnion(dataset.semantic_n_classes,
++                                     ignore_first_class=True)
++
++    for gt_paths, pred_paths in tqdm(
++        zip(chunker(gt_files, args.batch_size),
++            chunker(pred_files, args.batch_size)),
++        total=(len(gt_files)+args.batch_size-1)//args.batch_size
++    ):
++
++        gt_panoptics = []
++        pred_panoptics = []
++
++        gt_semantics = []
++        pred_semantics = []
++
++        has_same_shape = True
++        prev_shape = None
++
++        for gt_path, pred_path in zip(gt_paths, pred_paths):
++            gt_semantic, gt_instance = load_semantic_and_instance_rgb(gt_path)
++            pred_semantic, pred_instance = load_semantic_and_instance_rgb(
++                pred_path)
++            if args.sanity_check:
++                assert gt_semantic.shape == pred_semantic.shape
++                assert gt_instance.shape == pred_instance.shape
++
++            # Mask out ignored ids
++            if len(ignore_ids) > 0:
++                background_mask = np.isin(gt_semantic, ignore_ids)
++                gt_semantic[background_mask] = 0
++                gt_instance[background_mask] = 0
++
++            # Mask out instances in stuff classes
++            background_mask = np.isin(gt_semantic, stuff_ids)
++            gt_instance[background_mask] = 0
++
++            # Combine semantic and instance ids
++            gt_panoptic = gt_semantic * args.shift + gt_instance
++
++            # Merge semantic and instance predictions and make instance ids
++            # contiguous over each semantic class
++            pred_semantic_fg = np.isin(pred_semantic, thing_ids)
++
++            pred_panoptic, _ = \
++                deeplab_merge_semantic_and_instance(pred_semantic,
++                                                    pred_instance,
++                                                    pred_semantic_fg,
++                                                    args.shift,
++                                                    thing_ids,
++                                                    0)
++
++            # Add batch dimension, as the PQ expects a batch dim
++            gt_panoptic = gt_panoptic[None, ...]
++            pred_panoptic = pred_panoptic[None, ...]
++
++            pred_semantics.append(pred_semantic)
++            pred_panoptics.append(pred_panoptic)
++
++            gt_semantics.append(gt_semantic)
++            gt_panoptics.append(gt_panoptic)
++
++            if prev_shape is not None:
++                has_same_shape = all((has_same_shape,
++                                     prev_shape == gt_panoptic.shape))
++            prev_shape = gt_panoptic.shape
++
++        if has_same_shape:
++            # Concatenate all tensors in the batch with torch
++            gt_panoptics = torch.cat(gt_panoptics, dim=0)
++            gt_semantics = torch.cat(gt_semantics, dim=0)
++
++            pred_panoptics = torch.cat(pred_panoptics, dim=0)
++            pred_semantics = torch.cat(pred_semantics, dim=0)
++
++            pq.update(pred_panoptics, gt_panoptics)
++
++            miou.update(pred_semantics, gt_semantics)
++        else:
++            for idx in range(len(gt_panoptics)):
++                pq.update(pred_panoptics[idx], gt_panoptics[idx])
++                miou.update(pred_semantics[idx], gt_semantics[idx])
++
++    pq_dict = pq.compute()
++    miou, ious = miou.compute(return_ious=True)
++
++    results_dict = {
++        'argv': sys.argv,
++        **pq_dict,
++        'miou': miou,
++        'iou_per_class': ious,
++    }
++    results_dict = {f'panoptic_{k}': v for k, v in results_dict.items()}
++
++    return results_dict
++
++
++def load_semantic_and_instance_rgb(path):
++    img = cv2.imread(path, cv2.IMREAD_UNCHANGED)
++    assert img is not None, f'Failed to load image from {path}'
++    b = img[:, :, 0].astype(np.int64)
++    g = img[:, :, 1].astype(np.int64)
++    r = img[:, :, 2].astype(np.int64)
++    semantic = r
++    instance = (g << 8) + b
++    semantic = torch.from_numpy(semantic).to(torch.int64)
++    instance = torch.from_numpy(instance).to(torch.int64)
++    return semantic, instance
++
++
++def get_dataset(dataset_name):
++    dataset = nicr_scene_analysis_datasets.get_dataset_class(dataset_name)
++    split = 'test'   # only used for getting all the dataset information
++    if 'scannet' == dataset_name:
++        dataset = dataset(split=split, sample_keys=(), semantic_n_classes=40,
++                          disable_prints=True)
++    elif 'hypersim' == dataset_name:
++        dataset = dataset(split=split, sample_keys=(), disable_prints=True)
++    else:
++        raise ValueError(f'Dataset {dataset_name} not supported')
++    return dataset
++
++
++if __name__ == '__main__':
++    main()
+diff -x .git -x addToConfusionMatrix.c -x '*.cpython*' -x build -r -N -u ./ScanNet/BenchmarkScripts/2d_evaluation/evalPixelLevelSemanticLabeling.py ./ScanNet_ours/BenchmarkScripts/2d_evaluation/evalPixelLevelSemanticLabeling.py
+--- ./ScanNet/BenchmarkScripts/2d_evaluation/evalPixelLevelSemanticLabeling.py	2023-03-16 13:59:38.130726346 +0100
++++ ./ScanNet_ours/BenchmarkScripts/2d_evaluation/evalPixelLevelSemanticLabeling.py	2023-03-20 14:57:40.182845676 +0100
+@@ -26,6 +26,7 @@
+ import math
+ import platform
+ import fnmatch
++import json
+ 
+ try:
+     import numpy as np
+@@ -54,19 +55,29 @@
+     except:
+         CSUPPORT = False
+ 
++# import utils in an ugly way (this is just copied from other files)
++import inspect
++currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
++parentdir = os.path.dirname(currentdir)
++sys.path.insert(0,parentdir)
++import util
++
+ parser = argparse.ArgumentParser()
+ parser.add_argument('--gt_path', required=True, help='path to gt files')
+ parser.add_argument('--pred_path', required=True, help='path to result files')
+ parser.add_argument('--output_file', default='', help='output file (default pred_path/semantic_label.txt')
++parser.add_argument('--dataset', type=str, help="Name of the dataset")
+ opt = parser.parse_args()
+ if not opt.output_file:
+     opt.output_file = os.path.join(opt.pred_path, 'semantic_label.txt')
+ 
+-
+-
+-CLASS_LABELS = ['wall', 'floor', 'cabinet', 'bed', 'chair', 'sofa', 'table', 'door', 'window', 'bookshelf', 'picture', 'counter', 'desk', 'curtain', 'refrigerator', 'shower curtain', 'toilet', 'sink', 'bathtub', 'otherfurniture']
+-VALID_CLASS_IDS = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 24, 28, 33, 34, 36, 39])
+-ALL_CLASS_IDS = np.arange(40 + 1)
++CLASS_LABELS, VALID_CLASS_IDS, _ = util.get_valid_classes_for_semantic(opt.dataset)
++# CLASS_LABELS = ['wall', 'floor', 'cabinet', 'bed', 'chair', 'sofa', 'table', 'door', 'window', 'bookshelf', 'picture', 'counter', 'desk', 'curtain', 'refrigerator', 'shower curtain', 'toilet', 'sink', 'bathtub', 'otherfurniture']
++# VALID_CLASS_IDS = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 24, 28, 33, 34, 36, 39])
++
++# NOTE: Not sure why we need an array here where we use all ids
++# To be sure not to break things we define ALL_CLASS_IDS the same way as in the original code
++ALL_CLASS_IDS = np.arange(util.get_dataset(opt.dataset).semantic_n_classes)
+ 
+ #########################
+ # Methods
+@@ -120,7 +131,7 @@
+ 
+     # the denominator of the IOU score
+     denom = (tp + fp + fn)
+-    if denom == 0:
++    if denom == 0 or (tp + fn) == 0:     # add. check if there is any gt
+         return float('nan')
+ 
+     # return IOU
+@@ -145,16 +156,22 @@
+ 
+ # Print intersection-over-union scores for all classes.
+ def printClassScores(scoreList):
+-    print 'classes          IoU'
+-    print '----------------------------'
+-    for i in range(len(VALID_CLASS_IDS)):
+-        label = VALID_CLASS_IDS[i]
+-        labelName = CLASS_LABELS[i]
+-        iouStr = "{0:>5.3f}".format(scoreList[labelName])
+-        print ("{0:<14s}: ".format(labelName) + iouStr)
++    print('classes          IoU')
++        # 'confusion_matrix': confusion
+ 
+-# Save results.
+-def write_result_file(conf, scores, filename):
++def write_result_file(conf, scores, miou, filename):
++    # dump results to json file
++    json_filename = filename.replace('.txt', '.json')
++    with open(json_filename, 'w') as f:
++        json.dump({
++            'argv': sys.argv,
++            'miou': miou,
++            'ious': scores,
++            'classes': dict(zip(VALID_CLASS_IDS.tolist(), CLASS_LABELS)),
++            'confusion_matrix': conf.tolist(),
++        }, f, indent=4)
++
++    # dump results to txt file
+     _SPLITTER = ','
+     with open(filename, 'w') as f:
+         f.write('iou scores\n')
+@@ -171,7 +188,7 @@
+             for c in range(len(VALID_CLASS_IDS)):
+                 f.write('\t{0:>5.3f}'.format(conf[r,c]))
+             f.write('\n')
+-    print 'wrote results to', filename
++    print('wrote results to', filename)
+ 
+ 
+ # Evaluate image lists pairwise.
+@@ -182,22 +199,25 @@
+     perImageStats = {}
+     nbPixels      = 0
+ 
+-    print 'Evaluating', len(predictionImgList), 'pairs of images...'
++    print(confMatrix.shape)
++
++    print('Evaluating', len(predictionImgList), 'pairs of images...')
+ 
+     # Evaluate all pairs of images and save them into a matrix
+     for i in range(len(predictionImgList)):
+         predictionImgFileName = predictionImgList[i]
+         groundTruthImgFileName = groundTruthImgList[i]
+-        #print "Evaluate ", predictionImgFileName, "<>", groundTruthImgFileName
++        #print("Evaluate ", predictionImgFileName, "<>", groundTruthImgFileName)
+         nbPixels += evaluatePair(predictionImgFileName, groundTruthImgFileName, confMatrix, perImageStats)
+ 
+         # sanity check
+         if confMatrix.sum() != nbPixels:
++            print(predictionImgFileName, groundTruthImgFileName)
+             printError('Number of analyzed pixels and entries in confusion matrix disagree: confMatrix {}, pixels {}'.format(confMatrix.sum(),nbPixels))
+ 
+         sys.stdout.write("\rImages Processed: {}".format(i+1))
+         sys.stdout.flush()
+-    print ""
++    print("")
+ 
+     # sanity check
+     if confMatrix.sum() != nbPixels:
+@@ -205,21 +225,29 @@
+ 
+     # Calculate IOU scores on class level from matrix
+     classScoreList = {}
++    ious = []
+     for i in range(len(VALID_CLASS_IDS)):
+         labelName = CLASS_LABELS[i]
+         label = VALID_CLASS_IDS[i]
+         classScoreList[labelName] = getIouScoreForLabel(label, confMatrix)
+ 
++        if confMatrix[label, :].sum() > 0:
++            # we have gt annotations for this class
++            ious.append(classScoreList[labelName])
++
++    miou = np.mean(ious)
++
+     # Print IOU scores
+     printClassScores(classScoreList)
+     iouAvgStr  = "{avg:5.3f}".format(avg=getScoreAverage(classScoreList))
+-    print "--------------------------------"
+-    print "Score Average : " + iouAvgStr
+-    print "--------------------------------"
+-    print ""
++    print("--------------------------------")
++    print("Score Average : " + iouAvgStr)
++    print("--------------------------------")
++
++    print(f"\nmiou (valid & has_gt -> {len(ious)} classes): {miou}")
+ 
+     # write result file
+-    write_result_file(confMatrix, classScoreList, outputFile)
++    write_result_file(confMatrix, classScoreList, miou, outputFile)
+ 
+ # Main evaluation method. Evaluates pairs of prediction and ground truth
+ # images which are passed as arguments.
+@@ -228,12 +256,12 @@
+     try:
+         predictionImg = Image.open(predictionImgFileName)
+         predictionNp  = np.array(predictionImg)
+-    except Exception, e:
++    except Exception as e:
+         printError("Unable to load " + predictionImgFileName + ": " + str(e))
+     try:
+         groundTruthImg = Image.open(groundTruthImgFileName)
+         groundTruthNp = np.array(groundTruthImg)
+-    except Exception, e:
++    except Exception as e:
+         printError("Unable to load " + groundTruthImgFileName + ": " + str(e))
+ 
+     # Check for equal image sizes
+@@ -242,11 +270,15 @@
+     if ( len(predictionNp.shape) != 2 ):
+         printError("Predicted image has multiple channels.", user_fault=True)
+ 
+-    # resize for evaluation 
+-    predictionImg = predictionImg.resize((640, 480), Image.NEAREST)
++    # resize for evaluation
++    # note that we disable resizing to the lower resolution
++    # predictionImg = predictionImg.resize((640, 480), Image.NEAREST)
+     predictionNp  = np.array(predictionImg)
+-    groundTruthImg = groundTruthImg.resize((640, 480), Image.NEAREST)
++    # note that we disable resizing to the lower resolution
++    # groundTruthImg = groundTruthImg.resize((640, 480), Image.NEAREST)
+     groundTruthNp = np.array(groundTruthImg)
++    assert predictionNp.shape[:2] == groundTruthNp.shape[:2]
++
+     imgWidth  = predictionImg.size[0]
+     imgHeight = predictionImg.size[1]
+     nbPixels  = imgWidth*imgHeight
+@@ -266,7 +298,7 @@
+ # The main method
+ def main():
+ 
+-    pred_files = os.listdir(opt.pred_path)
++    pred_files = sorted(os.listdir(opt.pred_path))
+     gt_files = []
+     if len(pred_files) == 0:
+         printError("No result files found.", user_fault=True)
+diff -x .git -x addToConfusionMatrix.c -x '*.cpython*' -x build -r -N -u ./ScanNet/BenchmarkScripts/2d_evaluation/instance.py ./ScanNet_ours/BenchmarkScripts/2d_evaluation/instance.py
+--- ./ScanNet/BenchmarkScripts/2d_evaluation/instance.py	2023-03-16 13:59:38.134726267 +0100
++++ ./ScanNet_ours/BenchmarkScripts/2d_evaluation/instance.py	2023-03-21 15:38:41.287792903 +0100
+@@ -2,6 +2,34 @@
+ #
+ # Instance class
+ #
++import json
++
++import numpy as np
++from PIL import Image
++
++
++def load_gt_image(filepath, shift=1000):
++    img = Image.open(filepath)
++
++    # Image as numpy array
++    img = np.array(img)
++
++    if 1000 == shift:
++        # default ScanNet format
++        assert img.ndim == 2
++        assert img.dtype == 'uint16'
++    elif 2**16 == shift:
++        # shift 2**16: R: semantic (uint8), G+B: instance (uint16)
++        assert img.ndim == 3
++        assert img.dtype == 'uint8'
++        img_ = img[..., 0].astype('uint32') * 2**16     # R
++        img_ += img[..., 1].astype('uint32') * 2**8     # G
++        img_ += img[..., 2].astype('uint32')            # B
++        img = img_
++    else:
++        raise ValueError(f"Unknown shift value: {shift}")
++
++    return img
+ 
+ class Instance(object):
+     instID     = 0
+@@ -10,15 +38,16 @@
+     medDist    = -1
+     distConf   = 0.0
+ 
+-    def __init__(self, imgNp, instID):
++    def __init__(self, imgNp, instID, shift=1000):
+         if (instID == -1):
+             return
++        self.shift      = shift
+         self.instID     = int(instID)
+         self.labelID    = int(self.getLabelID(instID))
+         self.pixelCount = int(self.getInstancePixels(imgNp, instID))
+ 
+     def getLabelID(self, instID):
+-        return int(instID // 1000)
++        return int(instID // self.shift)
+ 
+     def getInstancePixels(self, imgNp, instLabel):
+         return (imgNp == instLabel).sum()
+diff -x .git -x addToConfusionMatrix.c -x '*.cpython*' -x build -r -N -u ./ScanNet/BenchmarkScripts/2d_evaluation/instances2dict.py ./ScanNet_ours/BenchmarkScripts/2d_evaluation/instances2dict.py
+--- ./ScanNet/BenchmarkScripts/2d_evaluation/instances2dict.py	2023-03-16 13:59:38.134726267 +0100
++++ ./ScanNet_ours/BenchmarkScripts/2d_evaluation/instances2dict.py	2023-03-21 15:36:11.314768971 +0100
+@@ -6,10 +6,12 @@
+ from __future__ import print_function
+ import os, sys
+ from instance import Instance
+-from PIL import Image
++from instance import load_gt_image
+ import numpy as np
+ 
+-def instances2dict(imageFileList, class_labels, class_ids, verbose=False):
++
++def instances2dict(imageFileList, class_labels, class_ids,
++                   verbose=False, shift=1000):
+     imgCount     = 0
+     instanceDict = {}
+     label2id = {}
+@@ -26,10 +28,7 @@
+ 
+     for imageFileName in imageFileList:
+         # Load image
+-        img = Image.open(imageFileName)
+-
+-        # Image as numpy array
+-        imgNp = np.array(img)
++        imgNp = load_gt_image(imageFileName, shift)
+ 
+         # Initialize label categories
+         instances = {}
+@@ -38,7 +37,7 @@
+ 
+         # Loop through all instance ids in instance image
+         for instanceId in np.unique(imgNp):
+-            instanceObj = Instance(imgNp, instanceId)
++            instanceObj = Instance(imgNp, instanceId, shift=shift)
+             if instanceObj.labelID in class_ids:
+                 instances[id2label[instanceObj.labelID]].append(instanceObj.toDict())
+ 
+diff -x .git -x addToConfusionMatrix.c -x '*.cpython*' -x build -r -N -u ./ScanNet/BenchmarkScripts/3d_evaluation/evaluate_panoptic.py ./ScanNet_ours/BenchmarkScripts/3d_evaluation/evaluate_panoptic.py
+--- ./ScanNet/BenchmarkScripts/3d_evaluation/evaluate_panoptic.py	1970-01-01 01:00:00.000000000 +0100
++++ ./ScanNet_ours/BenchmarkScripts/3d_evaluation/evaluate_panoptic.py	2023-03-31 17:56:40.024505044 +0200
+@@ -0,0 +1,200 @@
++# -*- coding: utf-8 -*-
++"""
++.. codeauthor:: Soehnke Fischedick <soehnke-benedikt.fischedick@tu-ilmenau.de>
++.. codeauthor:: Daniel Seichter <daniel.seichter@tu-ilmenau.de>
++"""
++import argparse
++import glob
++import json
++import os
++import sys
++
++import numpy as np
++import torch
++from tqdm import tqdm
++
++from nicr_mt_scene_analysis.metric import MeanIntersectionOverUnion
++from nicr_mt_scene_analysis.metric import PanopticQuality
++
++import nicr_scene_analysis_datasets
++
++
++file_suffix = '.txt'
++
++
++def parse_args():
++    parser = argparse.ArgumentParser(
++        description='Evaluate 3D panoptic segmentation results.'
++    )
++    parser.add_argument('--pred_path',  # _ for compatibility to other scripts
++                        type=str,
++                        required=True,
++                        help='path to prediction files')
++    parser.add_argument('--gt_path',  # _ for compatibility to other scripts
++                        type=str,
++                        required=True,
++                        help='path to ground truth files')
++    parser.add_argument('--output_file',  # _ for compatibility to other scripts
++                        type=str,
++                        default='output.json',
++                        help='path to output file')
++    parser.add_argument('--dataset',
++                        type=str,
++                        required=True,
++                        help='dataset name')
++    parser.add_argument('--shift',
++                        type=int,
++                        default=(1 << 16),
++                        help='shift for combining semantic and instance ids')
++
++    return parser.parse_args()
++
++
++def main():
++    args = parse_args()
++
++    # List all files for evaluation
++    gt_files = sorted(
++        glob.glob(os.path.join(args.gt_path, '*' + file_suffix))
++    )
++    pred_files = sorted(
++        glob.glob(os.path.join(args.pred_path, '*' + file_suffix))
++    )
++
++    assert [os.path.basename(f) for f in gt_files] == [os.path.basename(f) for f in pred_files]
++
++    # Do the evaluation
++    pq_dict = evaluate(pred_files, gt_files, args)
++
++    # Iterate over the dictionary to make it json serializable
++    # If the tensor only has one element, we will read the item, otherwise
++    # we will convert it to a list
++    output_dict = {}
++    for k, v in pq_dict.items():
++        if isinstance(v, torch.Tensor):
++            if v.numel() == 1:
++                output_dict[k] = v.item()
++            else:
++                output_dict[k] = v.tolist()
++        else:
++            output_dict[k] = v
++
++    # Save output as json
++    with open(args.output_file, 'w') as f:
++        json.dump(output_dict, f, indent=4)
++    print(f"Wrote results file: '{args.output_file}'")
++
++    # print output
++    keys_to_print = (
++        'panoptic_all_with_gt_pq',
++        'panoptic_all_with_gt_rq',
++        'panoptic_all_with_gt_sq',
++        'panoptic_miou'
++    )
++    for k in keys_to_print:
++        print(f"{k+': ':>25} {output_dict[k]}")
++
++
++def get_dataset(dataset_name):
++    dataset = nicr_scene_analysis_datasets.get_dataset_class(dataset_name)
++    split = 'test'   # only used for getting all the dataset information
++    if 'scannet' == dataset_name:
++        dataset = dataset(split=split, sample_keys=(), semantic_n_classes=40,
++                          disable_prints=True)
++    elif 'hypersim' == dataset_name:
++        dataset = dataset(split=split, sample_keys=(), disable_prints=True)
++    else:
++        raise ValueError(f'Dataset {dataset_name} not supported')
++    return dataset
++
++
++def evaluate(pred_files, gt_files, args):
++    # Get the dataset class for the specified dataset
++    dataset = get_dataset(args.dataset)
++
++    is_thing = np.array(dataset.config.semantic_label_list.classes_is_thing)
++    thing_ids = np.where(is_thing)[0]
++    stuff_ids = np.where(~is_thing)[0]
++    ignore_ids = []
++    if args.dataset == 'scannet':
++        # Because the 20 classes subset is used, we need to ignore the
++        # classes that are not in the subset.
++        ignore_ids = [k for k, v in
++                      dataset.SEMANTIC_CLASSES_40_MAPPING_TO_BENCHMARK.items()
++                      if v == 0]
++
++    # Initialize metrics. MeanIntersectionOverUnion is more for a sanity check
++    # and can be compared to the official scannet evaluation script.
++    pq = PanopticQuality(num_categories=dataset.semantic_n_classes,
++                         ignored_label=0,
++                         max_instances_per_category=args.shift,
++                         offset=256**3,
++                         is_thing=is_thing,
++                         num_workers=1)
++
++    miou = MeanIntersectionOverUnion(dataset.semantic_n_classes,
++                                     ignore_first_class=True)
++
++    # Iterate over all files
++    for pred_file, gt_file in tqdm(zip(pred_files, gt_files),
++                                   total=len(pred_files)):
++
++        # Load predictions
++        pred = torch.from_numpy(np.loadtxt(pred_file, dtype=np.int64))
++
++        # Split ground truth into semantic and instance part
++        pred_semantic = pred // args.shift
++        # pred_instance = pred % args.shift
++
++        # Load ground truth
++        gt = torch.from_numpy(np.loadtxt(gt_file, dtype=np.int64))
++
++        # Set all instances which are in stuff classes to 0 for the
++        # ground truth.
++        # Additionally, set all pixels from classes which should be ignored
++        # (e.g. cause of the 20 classes subset) to 0 so they are ignored
++        # for metrics.
++
++        # Split ground truth into semantic and instance part
++        gt_semantic = gt // args.shift
++        gt_instance = gt % args.shift
++
++        # Mask out ignored classes
++        if len(ignore_ids) > 0:
++            background_mask = np.isin(gt_semantic, ignore_ids)
++            gt_semantic[background_mask] = 0
++
++        # Remove instances from stuff classes as they are not considered for
++        # panoptic quality
++        background_mask = np.isin(gt_semantic, stuff_ids)
++        gt_instance[background_mask] = 0
++
++        # Combine semantic and instance part again
++        gt = gt_semantic * args.shift + gt_instance
++
++        # PQ class expects to have ndim=3 so we need to add a dummy dimension
++        gt = gt[None, None, ...]
++        pred = pred[None, None, ...]
++        # Update the PQ
++        pq.update(pred, gt)
++
++        # Update the mIoU
++        miou.update(pred_semantic, gt_semantic)
++
++    # Compute the metrics and return them
++    pq_dict = pq.compute()
++    miou, ious = miou.compute(return_ious=True)
++
++    results_dict = {
++        'argv': sys.argv,
++        **pq_dict,
++        'miou': miou,
++        'iou_per_class': ious,
++    }
++    results_dict = {f'panoptic_{k}': v for k, v in results_dict.items()}
++
++    return results_dict
++
++
++if __name__ == '__main__':
++    main()
+diff -x .git -x addToConfusionMatrix.c -x '*.cpython*' -x build -r -N -u ./ScanNet/BenchmarkScripts/3d_evaluation/evaluate_semantic_instance.py ./ScanNet_ours/BenchmarkScripts/3d_evaluation/evaluate_semantic_instance.py
+--- ./ScanNet/BenchmarkScripts/3d_evaluation/evaluate_semantic_instance.py	2023-03-16 13:59:38.138726186 +0100
++++ ./ScanNet_ours/BenchmarkScripts/3d_evaluation/evaluate_semantic_instance.py	2023-04-03 16:08:43.090070441 +0200
+@@ -27,6 +27,7 @@
+ 
+ # python imports
+ import math
++import json
+ import os, sys, argparse
+ import inspect
+ from copy import deepcopy
+@@ -34,7 +35,7 @@
+ try:
+     import numpy as np
+ except:
+-    print "Failed to import numpy package."
++    print("Failed to import numpy package.")
+     sys.exit(-1)
+ 
+ currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+@@ -47,15 +48,18 @@
+ parser.add_argument('--pred_path', required=True, help='path to directory of predicted .txt files')
+ parser.add_argument('--gt_path', required=True, help='path to directory of gt .txt files')
+ parser.add_argument('--output_file', default='', help='output file [default: pred_path/semantic_instance_evaluation.txt]')
++parser.add_argument('--dataset', type=str, help='Name of the dataset on which to evaluate.')
++parser.add_argument('--shift', type=int, default=1<<16, help='Shift used for parsing panoptic ids (semantic * shift + instance).')
+ opt = parser.parse_args()
+ 
+ if opt.output_file == '':
+     opt.output_file = os.path.join(opt.pred_path, 'semantic_instance_evaluation.txt')
+ 
++# shift as global variable as we need it deeper inside their code
++SHIFT = opt.shift
+ 
+ # ---------- Label info ---------- #
+-CLASS_LABELS = ['cabinet', 'bed', 'chair', 'sofa', 'table', 'door', 'window', 'bookshelf', 'picture', 'counter', 'desk', 'curtain', 'refrigerator', 'shower curtain', 'toilet', 'sink', 'bathtub', 'otherfurniture']
+-VALID_CLASS_IDS = np.array([3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 24, 28, 33, 34, 36, 39])
++CLASS_LABELS, VALID_CLASS_IDS = util.get_valid_classes_for_semantic_instance(opt.dataset)
+ ID_TO_LABEL = {}
+ LABEL_TO_ID = {}
+ for i in range(len(VALID_CLASS_IDS)):
+@@ -77,9 +81,9 @@
+     min_region_sizes = [ opt.min_region_sizes[0] ]
+     dist_threshes = [ opt.distance_threshes[0] ]
+     dist_confs = [ opt.distance_confs[0] ]
+-    
++
+     # results: class x overlap
+-    ap = np.zeros( (len(dist_threshes) , len(CLASS_LABELS) , len(overlaps)) , np.float )
++    ap = np.zeros( (len(dist_threshes) , len(CLASS_LABELS) , len(overlaps)) , np.float32 )
+     for di, (min_region_size, distance_thresh, distance_conf) in enumerate(zip(min_region_sizes, dist_threshes, dist_confs)):
+         for oi, overlap_th in enumerate(overlaps):
+             pred_visited = {}
+@@ -99,7 +103,7 @@
+                     pred_instances = matches[m]['pred'][label_name]
+                     gt_instances = matches[m]['gt'][label_name]
+                     # filter groups in ground truth
+-                    gt_instances = [ gt for gt in gt_instances if gt['instance_id']>=1000 and gt['vert_count']>=min_region_size and gt['med_dist']<=distance_thresh and gt['dist_conf']>=distance_conf ]
++                    gt_instances = [ gt for gt in gt_instances if gt['instance_id']>=SHIFT and gt['vert_count']>=min_region_size and gt['med_dist']<=distance_thresh and gt['dist_conf']>=distance_conf ]
+                     if gt_instances:
+                         has_gt = True
+                     if pred_instances:
+@@ -107,7 +111,7 @@
+ 
+                     cur_true  = np.ones ( len(gt_instances) )
+                     cur_score = np.ones ( len(gt_instances) ) * (-float("inf"))
+-                    cur_match = np.zeros( len(gt_instances) , dtype=np.bool )
++                    cur_match = np.zeros( len(gt_instances) , dtype=bool )
+                     # collect matches
+                     for (gti,gt) in enumerate(gt_instances):
+                         found_match = False
+@@ -153,7 +157,7 @@
+                             num_ignore = pred['void_intersection']
+                             for gt in pred['matched_gt']:
+                                 # group?
+-                                if gt['instance_id'] < 1000:
++                                if gt['instance_id'] < SHIFT:
+                                     num_ignore += gt['intersection']
+                                 # small ground truth instances
+                                 if gt['vert_count'] < min_region_size or gt['med_dist']>distance_thresh or gt['dist_conf']<distance_conf:
+@@ -245,15 +249,15 @@
+ def assign_instances_for_scan(pred_file, gt_file, pred_path):
+     try:
+         pred_info = util_3d.read_instance_prediction_file(pred_file, pred_path)
+-    except Exception, e:
++    except Exception as e:
+         util.print_error('unable to load ' + pred_file + ': ' + str(e))
+     try:
+         gt_ids = util_3d.load_ids(gt_file)
+-    except Exception, e:
++    except Exception as e:
+         util.print_error('unable to load ' + gt_file + ': ' + str(e))
+ 
+     # get gt instances
+-    gt_instances = util_3d.get_instances(gt_ids, VALID_CLASS_IDS, CLASS_LABELS, ID_TO_LABEL)
++    gt_instances = util_3d.get_instances(gt_ids, VALID_CLASS_IDS, CLASS_LABELS, ID_TO_LABEL, shift=SHIFT)
+     # associate
+     gt2pred = deepcopy(gt_instances)
+     for label in gt2pred:
+@@ -264,7 +268,7 @@
+         pred2gt[label] = []
+     num_pred_instances = 0
+     # mask of void labels in the groundtruth
+-    bool_void = np.logical_not(np.in1d(gt_ids//1000, VALID_CLASS_IDS))
++    bool_void = np.logical_not(np.in1d(gt_ids//SHIFT, VALID_CLASS_IDS))
+     # go thru all prediction masks
+     for pred_mask_file in pred_info:
+         label_id = int(pred_info[pred_mask_file]['label_id'])
+@@ -310,19 +314,19 @@
+ 
+ 
+ def print_results(avgs):
+-    sep     = "" 
++    sep     = ""
+     col1    = ":"
+     lineLen = 64
+ 
+-    print ""
+-    print "#"*lineLen
++    print("")
++    print("#"*lineLen)
+     line  = ""
+     line += "{:<15}".format("what"      ) + sep + col1
+     line += "{:>15}".format("AP"        ) + sep
+     line += "{:>15}".format("AP_50%"    ) + sep
+     line += "{:>15}".format("AP_25%"    ) + sep
+-    print line
+-    print "#"*lineLen
++    print(line)
++    print("#"*lineLen)
+ 
+     for (li,label_name) in enumerate(CLASS_LABELS):
+         ap_avg  = avgs["classes"][label_name]["ap"]
+@@ -332,22 +336,32 @@
+         line += sep + "{:>15.3f}".format(ap_avg ) + sep
+         line += sep + "{:>15.3f}".format(ap_50o ) + sep
+         line += sep + "{:>15.3f}".format(ap_25o ) + sep
+-        print line
++        print(line)
+ 
+     all_ap_avg  = avgs["all_ap"]
+     all_ap_50o  = avgs["all_ap_50%"]
+     all_ap_25o  = avgs["all_ap_25%"]
+ 
+-    print "-"*lineLen
+-    line  = "{:<15}".format("average") + sep + col1 
+-    line += "{:>15.3f}".format(all_ap_avg)  + sep 
++    print("-"*lineLen)
++    line  = "{:<15}".format("average") + sep + col1
++    line += "{:>15.3f}".format(all_ap_avg)  + sep
+     line += "{:>15.3f}".format(all_ap_50o)  + sep
+     line += "{:>15.3f}".format(all_ap_25o)  + sep
+-    print line
+-    print ""
++    print(line)
++    print("")
+ 
+ 
+ def write_result_file(avgs, filename):
++    # dump results to json file
++    json_filepath = filename.replace('.txt', '.json')
++    with open(json_filepath, 'w') as f:
++        json.dump(
++            {'argv': sys.argv, 'results': avgs},
++            f,
++            default=lambda v: float(v),   # handle numpy.float32 -> float
++            indent=4
++        )
++    # dump results to txt (csv) file
+     _SPLITTER = ','
+     with open(filename, 'w') as f:
+         f.write(_SPLITTER.join(['class', 'class id', 'ap', 'ap50', 'ap25']) + '\n')
+@@ -357,11 +371,11 @@
+             ap = avgs["classes"][class_name]["ap"]
+             ap50 = avgs["classes"][class_name]["ap50%"]
+             ap25 = avgs["classes"][class_name]["ap25%"]
+-            f.write(_SPLITTER.join([str(x) for x in [class_name, class_id, ap, ap50, ap25]]) + '\n')    
++            f.write(_SPLITTER.join([str(x) for x in [class_name, class_id, ap, ap50, ap25]]) + '\n')
+ 
+ 
+ def evaluate(pred_files, gt_files, pred_path, output_file):
+-    print 'evaluating', len(pred_files), 'scans...'
++    print('evaluating', len(pred_files), 'scans...')
+     matches = {}
+     for i in range(len(pred_files)):
+         matches_key = os.path.abspath(gt_files[i])
+@@ -372,7 +386,7 @@
+         matches[matches_key]['pred'] = pred2gt
+         sys.stdout.write("\rscans processed: {}".format(i+1))
+         sys.stdout.flush()
+-    print ''
++    print('')
+     ap_scores = evaluate_matches(matches)
+     avgs = compute_averages(ap_scores)
+ 
+@@ -386,6 +400,7 @@
+     gt_files = []
+     if len(pred_files) == 0:
+         util.print_error('No result files found.', user_fault=True)
++
+     for i in range(len(pred_files)):
+         gt_file = os.path.join(opt.gt_path, pred_files[i])
+         if not os.path.isfile(gt_file):
+diff -x .git -x addToConfusionMatrix.c -x '*.cpython*' -x build -r -N -u ./ScanNet/BenchmarkScripts/3d_evaluation/evaluate_semantic_label.py ./ScanNet_ours/BenchmarkScripts/3d_evaluation/evaluate_semantic_label.py
+--- ./ScanNet/BenchmarkScripts/3d_evaluation/evaluate_semantic_label.py	2023-03-16 13:59:38.142726106 +0100
++++ ./ScanNet_ours/BenchmarkScripts/3d_evaluation/evaluate_semantic_label.py	2023-03-20 14:57:49.282664538 +0100
+@@ -11,13 +11,14 @@
+ 
+ # python imports
+ import math
++import json
+ import os, sys, argparse
+ import inspect
+ 
+ try:
+     import numpy as np
+ except:
+-    print "Failed to import numpy package."
++    print("Failed to import numpy package.")
+     sys.exit(-1)
+ try:
+     from itertools import izip
+@@ -34,25 +35,25 @@
+ parser.add_argument('--pred_path', required=True, help='path to directory of predicted .txt files')
+ parser.add_argument('--gt_path', required=True, help='path to gt files')
+ parser.add_argument('--output_file', default='', help='output file [default: pred_path/semantic_label_evaluation.txt]')
++parser.add_argument('--dataset', type=str, help='Name of the dataset on which to evaluate.')
+ opt = parser.parse_args()
+ 
+ if opt.output_file == '':
+     opt.output_file = os.path.join(opt.pred_path, 'semantic_label_evaluation.txt')
+ 
+-
+-CLASS_LABELS = ['wall', 'floor', 'cabinet', 'bed', 'chair', 'sofa', 'table', 'door', 'window', 'bookshelf', 'picture', 'counter', 'desk', 'curtain', 'refrigerator', 'shower curtain', 'toilet', 'sink', 'bathtub', 'otherfurniture']
+-VALID_CLASS_IDS = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 24, 28, 33, 34, 36, 39])
+-UNKNOWN_ID = np.max(VALID_CLASS_IDS) + 1
++CLASS_LABELS, VALID_CLASS_IDS, UNKNOWN_ID = util.get_valid_classes_for_semantic(opt.dataset)
++# CLASS_LABELS = ['wall', 'floor', 'cabinet', 'bed', 'chair', 'sofa', 'table', 'door', 'window', 'bookshelf', 'picture', 'counter', 'desk', 'curtain', 'refrigerator', 'shower curtain', 'toilet', 'sink', 'bathtub', 'otherfurniture']
++# VALID_CLASS_IDS = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 24, 28, 33, 34, 36, 39])
+ 
+ 
+ def evaluate_scan(pred_file, gt_file, confusion):
+     try:
+         pred_ids = util_3d.load_ids(pred_file)
+-    except Exception, e:
++    except Exception as e:
+         util.print_error('unable to load ' + pred_file + ': ' + str(e))
+     try:
+         gt_ids = util_3d.load_ids(gt_file)
+-    except Exception, e:
++    except Exception as e:
+         util.print_error('unable to load ' + gt_file + ': ' + str(e))
+     # sanity checks
+     if not pred_ids.shape == gt_ids.shape:
+@@ -67,7 +68,7 @@
+ 
+ def get_iou(label_id, confusion):
+     if not label_id in VALID_CLASS_IDS:
+-        return float('nan')
++        return (float('nan'), float('nan'), float('nan'))
+     # #true positives
+     tp = np.longlong(confusion[label_id, label_id])
+     # #false negatives
+@@ -77,12 +78,24 @@
+     fp = np.longlong(confusion[not_ignored, label_id].sum())
+ 
+     denom = (tp + fp + fn)
+-    if denom == 0:
+-        return float('nan')
++    if denom == 0 or (tp + fn) == 0:
++        return (float('nan'), tp, denom)
+     return (float(tp) / denom, tp, denom)
+ 
+ 
+-def write_result_file(confusion, ious, filename):
++def write_result_file(confusion, ious, miou, filename):
++    # dump results to json file
++    json_filepath = filename.replace('.txt', '.json')
++    with open(json_filepath, 'w') as f:
++        json.dump({
++            'argv': sys.argv,
++            'miou': miou,
++            'ious': {key: value[0] for key, value in ious.items()},
++            'classes': dict(zip(VALID_CLASS_IDS.tolist(), CLASS_LABELS)),
++            'confusion_matrix': confusion.tolist()
++        }, f, indent=4)
++
++    # dump results to txt file
+     with open(filename, 'w') as f:
+         f.write('iou scores\n')
+         for i in range(len(VALID_CLASS_IDS)):
+@@ -101,33 +114,44 @@
+             for c in range(len(VALID_CLASS_IDS)):
+                 f.write('\t{0:>5.3f}'.format(confusion[VALID_CLASS_IDS[r],VALID_CLASS_IDS[c]]))
+             f.write('\n')
+-    print 'wrote results to', filename
++    print('wrote results to', filename)
+ 
+ 
+ def evaluate(pred_files, gt_files, output_file):
+     max_id = UNKNOWN_ID
+     confusion = np.zeros((max_id+1, max_id+1), dtype=np.ulonglong)
+ 
+-    print 'evaluating', len(pred_files), 'scans...'
++    print('evaluating', len(pred_files), 'scans...')
+     for i in range(len(pred_files)):
+         evaluate_scan(pred_files[i], gt_files[i], confusion)
+         sys.stdout.write("\rscans processed: {}".format(i+1))
+         sys.stdout.flush()
+-    print ''
++    print()
+ 
+     class_ious = {}
++    ious = []
+     for i in range(len(VALID_CLASS_IDS)):
+         label_name = CLASS_LABELS[i]
+         label_id = VALID_CLASS_IDS[i]
+         class_ious[label_name] = get_iou(label_id, confusion)
++
++        if confusion[label_id, :].sum() > 0:
++            # we have gt annotations for this class
++            ious.append(class_ious[label_name][0])
++
++    miou = np.mean(ious)
++
+     # print
+-    print 'classes          IoU'
+-    print '----------------------------'
++    print('classes          IoU')
++    print('----------------------------')
+     for i in range(len(VALID_CLASS_IDS)):
+         label_name = CLASS_LABELS[i]
+         #print('{{0:<14s}: 1:>5.3f}'.format(label_name, class_ious[label_name][0]))
+         print('{0:<14s}: {1:>5.3f}   ({2:>6d}/{3:<6d})'.format(label_name, class_ious[label_name][0], class_ious[label_name][1], class_ious[label_name][2]))
+-    write_result_file(confusion, class_ious, output_file)
++
++    print(f"\nmiou (valid & has_gt -> {len(ious)} classes): {miou}")
++
++    write_result_file(confusion, class_ious, miou, output_file)
+ 
+ 
+ def main():
+diff -x .git -x addToConfusionMatrix.c -x '*.cpython*' -x build -r -N -u ./ScanNet/BenchmarkScripts/3d_helpers/export_train_mesh_for_evaluation.py ./ScanNet_ours/BenchmarkScripts/3d_helpers/export_train_mesh_for_evaluation.py
+--- ./ScanNet/BenchmarkScripts/3d_helpers/export_train_mesh_for_evaluation.py	2023-03-16 13:59:38.142726106 +0100
++++ ./ScanNet_ours/BenchmarkScripts/3d_helpers/export_train_mesh_for_evaluation.py	2023-02-17 10:41:07.086479972 +0100
+@@ -15,7 +15,7 @@
+ try:
+     import numpy as np
+ except:
+-    print "Failed to import numpy package."
++    print("Failed to import numpy package.")
+     sys.exit(-1)
+ 
+ currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+@@ -24,16 +24,17 @@
+ import util
+ import util_3d
+ 
+-TASK_TYPES = {'label', 'instance'}
++TASK_TYPES = {'label', 'instance', 'instance_pred'}
+ 
+ parser = argparse.ArgumentParser()
+ parser.add_argument('--scan_path', required=True, help='path to scannet scene (e.g., data/ScanNet/v2/scene0000_00')
+ parser.add_argument('--output_file', required=True, help='output file')
+ parser.add_argument('--label_map_file', required=True, help='path to scannetv2-labels.combined.tsv')
+ parser.add_argument('--type', required=True, help='task type [label or instance]')
++parser.add_argument('--shift', type=int, default=1<<16, help='Shift to use for reading panoptic ids (semantic * shift + instance)')
+ opt = parser.parse_args()
+-assert opt.type in TASK_TYPES
+ 
++assert opt.type in TASK_TYPES
+ 
+ def read_aggregation(filename):
+     assert os.path.isfile(filename)
+@@ -69,13 +70,13 @@
+     return seg_to_verts, num_verts
+ 
+ 
+-def export(mesh_file, agg_file, seg_file, label_map_file, type, output_file):
++def export(mesh_file, agg_file, seg_file, label_map_file, type, output_file, shift=1000):
+     label_map = util.read_label_mapping(opt.label_map_file, label_from='raw_category', label_to='nyu40id')
+     mesh_vertices = util_3d.read_mesh_vertices(mesh_file)
+     object_id_to_segs, label_to_segs = read_aggregation(agg_file)
+     seg_to_verts, num_verts = read_segmentation(seg_file)
+     label_ids = np.zeros(shape=(num_verts), dtype=np.uint32)     # 0: unannotated
+-    for label, segs in label_to_segs.iteritems():
++    for label, segs in label_to_segs.items():
+         label_id = label_map[label]
+         for seg in segs:
+             verts = seg_to_verts[seg]
+@@ -84,11 +85,18 @@
+         util_3d.export_ids(output_file, label_ids)
+     elif type == 'instance':
+         instance_ids = np.zeros(shape=(num_verts), dtype=np.uint32)  # 0: unannotated
+-        for object_id, segs in object_id_to_segs.iteritems():
++        for object_id, segs in object_id_to_segs.items():
++            for seg in segs:
++                verts = seg_to_verts[seg]
++                instance_ids[verts] = object_id
++        util_3d.export_instance_ids_for_eval_as_gt(output_file, label_ids, instance_ids, shift=shift)
++    elif type == "instance_pred":
++        instance_ids = np.zeros(shape=(num_verts), dtype=np.uint32)  # 0: unannotated
++        for object_id, segs in object_id_to_segs.items():
+             for seg in segs:
+                 verts = seg_to_verts[seg]
+                 instance_ids[verts] = object_id
+-        util_3d.export_instance_ids_for_eval(output_file, label_ids, instance_ids)
++        util_3d.export_instance_ids_for_eval_as_pred(output_file, label_ids, instance_ids)
+     else:
+         raise
+ 
+@@ -98,7 +106,7 @@
+     mesh_file = os.path.join(opt.scan_path, scan_name + '_vh_clean_2.ply')
+     agg_file = os.path.join(opt.scan_path, scan_name + '.aggregation.json')
+     seg_file = os.path.join(opt.scan_path, scan_name + '_vh_clean_2.0.010000.segs.json')
+-    export(mesh_file, agg_file, seg_file, opt.label_map_file, opt.type, opt.output_file)
++    export(mesh_file, agg_file, seg_file, opt.label_map_file, opt.type, opt.output_file, shift=opt.shift)
+ 
+ 
+ if __name__ == '__main__':
+diff -x .git -x addToConfusionMatrix.c -x '*.cpython*' -x build -r -N -u ./ScanNet/BenchmarkScripts/3d_helpers/extract_scannet_ground_truth.py ./ScanNet_ours/BenchmarkScripts/3d_helpers/extract_scannet_ground_truth.py
+--- ./ScanNet/BenchmarkScripts/3d_helpers/extract_scannet_ground_truth.py	1970-01-01 01:00:00.000000000 +0100
++++ ./ScanNet_ours/BenchmarkScripts/3d_helpers/extract_scannet_ground_truth.py	2023-03-31 15:59:47.216595305 +0200
+@@ -0,0 +1,130 @@
++# -*- coding: utf-8 -*-
++"""
++.. codeauthor:: Benedict Stephan <benedict.stephan@tu-ilmenau.de>
++.. codeauthor:: Daniel Seichter <daniel.seichter@tu-ilmenau.de>
++"""
++import argparse as ap
++import os
++import os.path as osp
++import shutil
++import subprocess
++import warnings
++
++import tqdm
++
++
++def _parse_args():
++    parser = ap.ArgumentParser(
++        formatter_class=ap.ArgumentDefaultsHelpFormatter,
++    )
++
++    parser.add_argument(
++        'scans_basepath',
++        type=str,
++        help="Directory containing the raw 'scans' folder for train and valid "
++             "split and 'scans_test' for test split."
++    )
++    parser.add_argument(
++        'split_files_path',
++        type=str,
++        help="Directory containing the split files, i.e., "
++             "'scannetv2_train.txt', 'scannetv2_val.txt', and "
++             "'scannetv2_test.txt'"
++    )
++    parser.add_argument(
++        'label_map_filepath',
++        type=str,
++        help="Path to the label map file, i.e., "
++             "'scannetv2-labels.combined.tsv'."
++    )
++    parser.add_argument(
++        'output_path',
++        type=str,
++        help="Where to store output files."
++    )
++    parser.add_argument(
++        '--split',
++        type=str,
++        choices=('train', 'valid', 'test'),
++        default='train',
++        help="Split to use."
++    )
++    parser.add_argument(
++        '--shift',
++        type=int,
++        default=(1<<16),
++        help='Shift to use for combining semantic and instance (sem*shift+ins).'
++    )
++
++    return parser.parse_args()
++
++
++def main():
++    args = _parse_args()
++
++    # read scene names
++    split = 'val' if 'valid' == args.split else args.split
++    split_file_filepath = osp.join(args.split_files_path,
++                                   f'scannetv2_{split}.txt')
++    with open(split_file_filepath, 'r') as f:
++        scenes = f.read().splitlines()
++
++    scenes = [scene for scene in scenes if scene != '']
++
++
++    for scan_folder in tqdm.tqdm(scenes):
++        scan_path = osp.join(
++            args.scans_basepath,
++            'scans' if 'test' != args.split else 'scans_test',
++            scan_folder,
++        )
++
++        # copy ply file
++        ply_filepath = osp.join(scan_path, f'{scan_folder}_vh_clean_2.ply')
++        output_path = osp.join(
++            args.output_path,
++            args.split,
++            'ply',
++            scan_folder
++        )
++        os.makedirs(output_path, exist_ok=True)
++        shutil.copy(ply_filepath,
++                    osp.join(output_path, f'{scan_folder}_vh_clean_2.ply'))
++
++        if 'test' == args.split:
++            warnings.warn('Skipping ground-truth extraction for test split.')
++            continue
++
++        # exact ground-truth annotations
++        for type_ in ('semantic', 'semantic_instance'):
++            # map type
++            if 'semantic' == type_:
++                type_scannet = 'label'
++            elif 'semantic_instance' == type_:
++                type_scannet = 'instance'
++
++            output_path = osp.join(
++                args.output_path,
++                args.split,
++                'scannet_benchmark_gt',
++                type_,
++            )
++            os.makedirs(output_path, exist_ok=True)
++            output_filepath = osp.join(
++                output_path,
++                scan_folder + '.txt'
++            )
++
++            subprocess.check_call([
++                'python',
++                'export_train_mesh_for_evaluation.py',
++                '--scan_path', scan_path,
++                '--output_file', output_filepath,
++                '--label_map_file', args.label_map_filepath,
++                '--type', type_scannet,
++                '--shift', str(args.shift),
++            ])
++
++
++if __name__ == "__main__":
++    main()
+diff -x .git -x addToConfusionMatrix.c -x '*.cpython*' -x build -r -N -u ./ScanNet/BenchmarkScripts/util_3d.py ./ScanNet_ours/BenchmarkScripts/util_3d.py
+--- ./ScanNet/BenchmarkScripts/util_3d.py	2023-03-16 13:59:38.170725546 +0100
++++ ./ScanNet_ours/BenchmarkScripts/util_3d.py	2023-02-17 10:41:07.102479652 +0100
+@@ -4,14 +4,14 @@
+ try:
+     import numpy as np
+ except:
+-    print "Failed to import numpy package."
++    print("Failed to import numpy package.")
+     sys.exit(-1)
+ 
+ try:
+     from plyfile import PlyData, PlyElement
+ except:
+-    print "Please install the module 'plyfile' for PLY i/o, e.g."
+-    print "pip install plyfile"
++    print("Please install the module 'plyfile' for PLY i/o, e.g.")
++    print("pip install plyfile")
+     sys.exit(-1)
+ 
+ import util
+@@ -54,7 +54,14 @@
+ 
+ 
+ # export 3d instance labels for instance evaluation
+-def export_instance_ids_for_eval(filename, label_ids, instance_ids):
++def export_instance_ids_for_eval_as_gt(filename, label_ids, instance_ids, shift=1000):
++    assert label_ids.shape[0] == instance_ids.shape[0]
++
++    export_ids(filename, label_ids * shift + instance_ids)
++
++
++# export 3d instance labels for instance evaluation
++def export_instance_ids_for_eval_as_pred(filename, label_ids, instance_ids):
+     assert label_ids.shape[0] == instance_ids.shape[0]
+     output_mask_path_relative = 'pred_mask'
+     name = os.path.splitext(os.path.basename(filename))[0]
+@@ -86,15 +93,16 @@
+     med_dist = -1
+     dist_conf = 0.0
+ 
+-    def __init__(self, mesh_vert_instances, instance_id):
++    def __init__(self, mesh_vert_instances, instance_id, shift=1000):
+         if (instance_id == -1):
+             return
++        self.shift = shift
+         self.instance_id     = int(instance_id)
+         self.label_id    = int(self.get_label_id(instance_id))
+         self.vert_count = int(self.get_instance_verts(mesh_vert_instances, instance_id))
+ 
+     def get_label_id(self, instance_id):
+-        return int(instance_id // 1000)
++        return int(instance_id // self.shift)
+ 
+     def get_instance_verts(self, mesh_vert_instances, instance_id):
+         return (mesh_vert_instances == instance_id).sum()
+@@ -145,7 +153,7 @@
+     return instance_info
+ 
+ 
+-def get_instances(ids, class_ids, class_labels, id2label):
++def get_instances(ids, class_ids, class_labels, id2label, shift=1000):
+     instances = {}
+     for label in class_labels:
+         instances[label] = []
+@@ -153,10 +161,7 @@
+     for id in instance_ids:
+         if id == 0:
+             continue
+-        inst = Instance(ids, id)
++        inst = Instance(ids, id, shift=shift)
+         if inst.label_id in class_ids:
+             instances[id2label[inst.label_id]].append(inst.to_dict())
+     return instances
+-            
+-
+-
+diff -x .git -x addToConfusionMatrix.c -x '*.cpython*' -x build -r -N -u ./ScanNet/BenchmarkScripts/util.py ./ScanNet_ours/BenchmarkScripts/util.py
+--- ./ScanNet/BenchmarkScripts/util.py	2023-03-16 13:59:38.170725546 +0100
++++ ./ScanNet_ours/BenchmarkScripts/util.py	2023-03-23 11:38:00.170450782 +0100
+@@ -3,7 +3,7 @@
+ try:
+     import numpy as np
+ except:
+-    print "Failed to import numpy package."
++    print("Failed to import numpy package.")
+     sys.exit(-1)
+ try:
+     import imageio
+@@ -12,6 +12,9 @@
+     print("pip install imageio")
+     sys.exit(-1)
+ 
++from nicr_scene_analysis_datasets import get_dataset_class
++
++
+ # print an error message and quit
+ def print_error(message, user_fault=False):
+     sys.stderr.write('ERROR: ' + str(message) + '\n')
+@@ -22,7 +25,7 @@
+ 
+ # if string s represents an int
+ def represents_int(s):
+-    try: 
++    try:
+         int(s)
+         return True
+     except ValueError:
+@@ -36,12 +39,69 @@
+         reader = csv.DictReader(csvfile, delimiter='\t')
+         for row in reader:
+             mapping[row[label_from]] = int(row[label_to])
+-    # if ints convert 
+-    if represents_int(mapping.keys()[0]):
++    # if ints convert
++    if represents_int(list(mapping.keys())[0]):
+         mapping = {int(k):v for k,v in mapping.items()}
+     return mapping
+ 
+ 
++def get_dataset(dataset_name):
++    dataset = get_dataset_class(dataset_name)
++    split = 'test'   # only used for getting all the dataset information
++    if 'scannet' == dataset_name:
++        dataset = dataset(split=split, sample_keys=(), semantic_n_classes=40,
++                          disable_prints=True)
++    elif 'hypersim' == dataset_name:
++        dataset = dataset(split=split, sample_keys=(), disable_prints=True)
++    else:
++        raise ValueError(f'Dataset {dataset_name} not supported')
++    return dataset
++
++
++def get_valid_classes_for_semantic(dataset_name: str):
++    dataset = get_dataset(dataset_name)
++
++    class_labels = [c.class_name for c in dataset.config.semantic_label_list_without_void]
++    valid_class_ids = np.array(list(range(1, len(dataset.config.semantic_label_list))))
++
++    if dataset_name == 'scannet':
++        valid_class_ids = np.array([k for k, v in dataset.SEMANTIC_CLASSES_40_MAPPING_TO_BENCHMARK.items() if v != 0])
++        class_labels = [class_labels[i-1] for i in valid_class_ids]
++
++        # sanity check with their original values
++        ORIG_CLASS_LABELS = ['wall', 'floor', 'cabinet', 'bed', 'chair', 'sofa', 'table', 'door', 'window', 'bookshelf', 'picture', 'counter', 'desk', 'curtain', 'refrigerator', 'shower curtain', 'toilet', 'sink', 'bathtub', 'otherfurniture']
++        ORIG_VALID_CLASS_IDS = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 24, 28, 33, 34, 36, 39])
++
++        assert ORIG_CLASS_LABELS == class_labels
++        assert (ORIG_VALID_CLASS_IDS == valid_class_ids).all()
++
++    unknown_class_id = max(valid_class_ids) + 1
++
++    return class_labels, valid_class_ids, unknown_class_id
++
++def get_valid_classes_for_semantic_instance(dataset_name: str):
++    dataset = get_dataset(dataset_name)
++
++    # for the semantic instance evaluation, we only want semantic thing classes
++    valid_class_ids = [i for i, c in enumerate(dataset.config.semantic_label_list) if c.is_thing]
++    all_class_labels = [c.class_name for c in dataset.config.semantic_label_list_without_void]
++
++    class_labels = [all_class_labels[i-1] for i in valid_class_ids]
++
++    if dataset_name == 'scannet':
++        valid_class_ids = [k for k in valid_class_ids if dataset.SEMANTIC_CLASSES_40_MAPPING_TO_BENCHMARK[k] != 0]
++        class_labels = [all_class_labels[i-1] for i in valid_class_ids]
++
++        # sanity check with their originial values
++        ORIG_CLASS_LABELS = ['cabinet', 'bed', 'chair', 'sofa', 'table', 'door', 'window', 'bookshelf', 'picture', 'counter', 'desk', 'curtain', 'refrigerator', 'shower curtain', 'toilet', 'sink', 'bathtub', 'otherfurniture']
++        ORIG_VALID_CLASS_IDS = np.array([3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 24, 28, 33, 34, 36, 39])
++
++        assert ORIG_CLASS_LABELS == class_labels
++        assert (ORIG_VALID_CLASS_IDS == valid_class_ids).all()
++
++    return class_labels, valid_class_ids
++
++
+ # input: scene_types.txt or scene_types_all.txt
+ def read_scene_types_mapping(filename, remove_spaces=True):
+     assert os.path.isfile(filename)
+@@ -51,7 +111,7 @@
+     if remove_spaces:
+         mapping = { x[1].strip():int(x[0]) for x in lines }
+     else:
+-        mapping = { x[1]:int(x[0]) for x in lines }        
++        mapping = { x[1]:int(x[0]) for x in lines }
+     return mapping
+ 
+ 
+@@ -94,20 +154,20 @@
+        (148, 103, 189),		# bookshelf
+        (196, 156, 148),		# picture
+        (23, 190, 207), 		# counter
+-       (178, 76, 76),  
++       (178, 76, 76),
+        (247, 182, 210),		# desk
+-       (66, 188, 102), 
++       (66, 188, 102),
+        (219, 219, 141),		# curtain
+-       (140, 57, 197), 
+-       (202, 185, 52), 
+-       (51, 176, 203), 
+-       (200, 54, 131), 
+-       (92, 193, 61),  
+-       (78, 71, 183),  
+-       (172, 114, 82), 
++       (140, 57, 197),
++       (202, 185, 52),
++       (51, 176, 203),
++       (200, 54, 131),
++       (92, 193, 61),
++       (78, 71, 183),
++       (172, 114, 82),
+        (255, 127, 14), 		# refrigerator
+-       (91, 163, 138), 
+-       (153, 98, 156), 
++       (91, 163, 138),
++       (153, 98, 156),
+        (140, 153, 101),
+        (158, 218, 229),		# shower curtain
+        (100, 125, 154),
+@@ -116,10 +176,10 @@
+        (146, 111, 194),
+        (44, 160, 44),  		# toilet
+        (112, 128, 144),		# sink
+-       (96, 207, 209), 
++       (96, 207, 209),
+        (227, 119, 194),		# bathtub
+-       (213, 92, 176), 
+-       (94, 106, 211), 
++       (213, 92, 176),
++       (94, 106, 211),
+        (82, 84, 163),  		# otherfurn
+        (100, 85, 144)
+     ]
+diff -x .git -x addToConfusionMatrix.c -x '*.cpython*' -x build -r -N -u ./ScanNet/.gitignore ./ScanNet_ours/.gitignore
+--- ./ScanNet/.gitignore	2023-03-16 13:59:38.062727708 +0100
++++ ./ScanNet_ours/.gitignore	2022-12-22 10:46:23.750296725 +0100
+@@ -1,2 +1,12 @@
+ .DS_Store
+ .idea/
++
++# Byte-compiled / optimized / DLL files
++__pycache__/
++*.py[cod]
++*$py.class
++
++# C extensions
++*.so
++
++build

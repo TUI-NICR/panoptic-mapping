@@ -1,0 +1,8 @@
+{
+    // disable annoying top-level source code modification indication
+    "gitlens.codeLens.authors.enabled": false,
+    "gitlens.codeLens.recentChange.enabled": false,
+    "[markdown]": {
+        "files.trimTrailingWhitespace": false
+    },
+}
