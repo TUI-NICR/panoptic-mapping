@@ -34,10 +34,10 @@ We evaluate the predictions of EMSANet as well as back-projections of our panopt
 - **2D semantic instance task**: the original [ScanNet 2D Semantic Instance Prediction](https://kaldir.vc.in.tum.de/scannet_benchmark/documentation#format-instance2d) task, i.e., evaluation of foreground instances of thing classes with corresponding semantic class and segmentation mask (metric: AP_50)
 - **2D panoptic task**: the proposed complementary dense panoptic evaluation taking into account both stuff and thing classes (metric: PQ and mIoU)
 
-> The data format for our proposed `2D panoptic task` follows the same naming convention and data format as the original [ScanNet 2D Semantic Label Prediction](https://kaldir.vc.in.tum.de/scannet_benchmark/documentation#format-label2d) task. 
+> The data format for our proposed **2D panoptic task** follows the same naming convention and data format as the original [ScanNet 2D Semantic Label Prediction](https://kaldir.vc.in.tum.de/scannet_benchmark/documentation#format-label2d) task. 
 Label encoding is similar to the ground-truth encoding for the [ScanNet 2D Semantic Instance Prediction](https://kaldir.vc.in.tum.de/scannet_benchmark/documentation#format-instance2d) task.
-However, as Hypersim features much more (small) instances than ScanNet, label encoding cannot be done in grayscale png16 (uint16) with *sem\*1000+ins*. Instead, we encode panoptic labels as RGB png8 with R: semantic class (uint8), G+B: instance id (uint16), i.e., *sem*(1<<16)+ins* is used.
-We also adopt the same label encoding for encoding the ground truth for the `2D semantic instance task` to support Hypersim.
+However, as Hypersim features much more (small) instances than ScanNet, label encoding cannot be done in grayscale png16 (uint16) with *sem\*1000+ins*. Instead, we encode panoptic labels as RGB png8 with R: semantic class (uint8), G+B: instance id (uint16), i.e., *sem\*(1<<16)+ins* is used.
+We also adopt the same label encoding for encoding the ground truth for the **2D semantic instance task** to support Hypersim.
 
 We describe the 2D ground-truth generation below in section [Extract 2D ground truth and EMSANet predictions for evaluation / mapping](#extract-2d-ground-truth-and-emsanet-predictions-for-evaluation-mapping).
 
@@ -50,7 +50,7 @@ Similar to the 2D evaluation, we evaluate our panoptic mapping approach in 3D on
 - **3D panoptic task**: the proposed complementary dense panoptic evaluation taking into account both stuff and thing classes (metric: PQ and mIoU)
 
 > The ground truth for all three tasks is given as txt files with each line describing the label of a corresponding point in a point-cloud representation.
-For the `3D semantic instance task` and the `3D panoptic task`, similar to 2D, we change the label encoding in the txt files from *sem\*1000+ins* to *sem\*(1<<16)+ins* to support Hypersim as well.
+For the **3D semantic instance task** and the **3D panoptic task**, similar to 2D, we change the label encoding in the txt files from *sem\*1000+ins* to *sem\*(1<<16)+ins* to support Hypersim as well.
 
 We describe the 3D ground-truth generation below in section [Extract 3D ground truth](#extract-3d-ground-truth).
 
