@@ -16,10 +16,10 @@ If you use the source code or the network weights, please cite the following pap
 
 ```bibtex
 @inproceedings{panopticndt2023iros,
-    title={{PanopticNDT: Efficient and Robust Panoptic Mapping}},
-    author={Seichter, Daniel and Stephan, Benedict and Fischedick, S{\"o}hnke Benedikt and  Mueller, Steffen and Rabes, Leonard and Gross, Horst-Michael},
-    booktitle={IEEE/RSJ Int. Conf. on Intelligent Robots and Systems (IROS)},
-    year={2023}
+  title={{PanopticNDT: Efficient and Robust Panoptic Mapping}},
+  author={Seichter, Daniel and Stephan, Benedict and Fischedick, S{\"o}hnke Benedikt and  Mueller, Steffen and Rabes, Leonard and Gross, Horst-Michael},
+  booktitle={IEEE/RSJ Int. Conf. on Intelligent Robots and Systems (IROS)},
+  year={2023}
 }
 
 # with appendix
