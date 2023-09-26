@@ -1,23 +1,40 @@
 # PanopticNDT: Efficient and Robust Panoptic Mapping
 
-This repository contains the code for our paper "PanopticNDT: Efficient and Robust Panoptic Mapping" (to be published).
+This repository contains the code for our paper "PanopticNDT: Efficient and Robust Panoptic Mapping" (IEEE Xplore, [arXiv](https://arxiv.org/abs/2309.13635) (with appendix)).
 
+<div align="center">
+      <a href="https://youtu.be/xS9jCEKO-Uw"><img src="https://img.youtube.com/vi/xS9jCEKO-Uw/maxresdefault.jpg" style="width: 70%;"></a>
+      <br>(Click on the image to open YouTube video)
+      <br><br>
+</div>
 
 ## License and Citations
 The source code is published under Apache 2.0 license, see [license file](LICENSE) for details.
 
 If you use the source code or the network weights, please cite the following paper:
->Seichter, D., Stephan, B., Fischedick, S., Müller, S., Rabes, L., Gross, H.-M. *PanopticNDT: Efficient and Robust Panoptic Mapping*, submitted to IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS), 2023.
+> Seichter, D., Stephan, B., Fischedick, S. B., Müller, S., Rabes, L., Gross, H.-M. *PanopticNDT: Efficient and Robust Panoptic Mapping*, in IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS), 2023.
 
 ```bibtex
-@inproceedings{tbd,
+@inproceedings{panopticndt2023iros,
+    title={{PanopticNDT: Efficient and Robust Panoptic Mapping}},
+    author={Seichter, Daniel and Stephan, Benedict and Fischedick, S{\"o}hnke Benedikt and  Mueller, Steffen and Rabes, Leonard and Gross, Horst-Michael},
+    booktitle={IEEE/RSJ Int. Conf. on Intelligent Robots and Systems (IROS)},
+    year={2023}
+}
+
+# with appendix
+@article{panopticndt2023arxiv,
+  title={{PanopticNDT: Efficient and Robust Panoptic Mapping}},
+  author={Seichter, Daniel and Stephan, Benedict and Fischedick, S{\"o}hnke Benedikt and  Mueller, Steffen and Rabes, Leonard and Gross, Horst-Michael},
+  journal={arXiv preprint arXiv:2309.13635},
+  year={2023}
 }
 ```
 
 
 ## Overview
 Given a precise localization in the environment, our panoptic mapping approach comprises two steps. 
-We first apply [EMSANet](https://github.com/TUI-NICR/EMSANet) – an efficient RGB-D panoptic segmentation approach – to the current set of input images (color and depth). 
+We first apply [EMSANet](https://github.com/TUI-NICR/EMSANet/tree/panopticndt) – an efficient RGB-D panoptic segmentation approach – to the current set of input images (color and depth). 
 Unlike other approaches, we decided in favor of an RGB-D approach as depth provides complementary information that helps segmenting cluttered indoor scenes. 
 Afterward, the obtained panoptic segmentation, the depth image, and the current pose are passed to the panoptic mapping stage.
 
@@ -64,6 +81,9 @@ Follow the steps below to reproduce results or to integrate parts in our pipelin
      - [Hypersim](#hypersim)
      - [ScanNet](#scannet)
 - [Download pretrained models](#download-pretrained-models)
+     - [Mapping experiments](#mapping-experiments)
+     - [Application network](#application-network)
+     - [Fine-tuned application network](#fine-tuned-application-network)
 - [Extract 2D ground truth and EMSANet predictions for evaluation / mapping](#extract-2d-ground-truth-and-emsanet-predictions-for-evaluation-mapping)
      - [Hypersim](#hypersim-1)
      - [ScanNet](#scannet-1)
@@ -141,7 +161,7 @@ To make it easier to set up the environment, we provide this meta repository tha
 
 
 ### Prepare data
-We provide scripts that automate dataset preparation along with our [nicr-scene-analysis-datasets python package](https://github.com/TUI-NICR/nicr-scene-analysis-datasets/tree/v0.5.3).
+We provide scripts that automate dataset preparation along with our [nicr-scene-analysis-datasets python package](https://github.com/TUI-NICR/nicr-scene-analysis-datasets/tree/v0.6.0).
 
 
 #### Hypersim
@@ -167,7 +187,7 @@ nicr_sa_prepare_dataset hypersim \
 # rm -rf $HYPERSIM_DOWNLOAD_PATH  
 ```
 
-We refer to the documentation of our [nicr-scene-analysis-datasets python package](https://github.com/TUI-NICR/nicr-scene-analysis-datasets/tree/v0.5.3/nicr_scene_analysis_datasets/datasets/hypersim) for further details.
+We refer to the documentation of our [nicr-scene-analysis-datasets python package](https://github.com/TUI-NICR/nicr-scene-analysis-datasets/tree/v0.6.0/nicr_scene_analysis_datasets/datasets/hypersim) for further details.
 
 
 #### ScanNet
@@ -197,10 +217,12 @@ nicr_sa_prepare_dataset scannet \
 # rm -rf $SCANNET_DOWNLOAD_PATH  
 ```   
 
-We refer to the documentation of our [nicr-scene-analysis-datasets python package](https://github.com/TUI-NICR/nicr-scene-analysis-datasets/tree/v0.5.3/nicr_scene_analysis_datasets/datasets/scannet) for further details.
+We refer to the documentation of our [nicr-scene-analysis-datasets python package](https://github.com/TUI-NICR/nicr-scene-analysis-datasets/tree/v0.6.0/nicr_scene_analysis_datasets/datasets/scannet) for further details.
 
 
 ### Download pretrained models
+
+#### Mapping experiments
 We provide the weights of our EMSANet-R34-NBt1D (enhanced ResNet34-based encoder utilizing the Non-Bottleneck-1D block) used for Hypersim and ScanNet experiments.
 
 Download the weights for [Hypersim](https://drive.google.com/uc?id=1gbu2H9zh7-1kGW8-NI_6eU3mcW_J0j-l) and [ScanNet](https://drive.google.com/uc?id=1x0Ud6qhqfb5DNjHmhiP9xiau5snKceWb) and extract them to `./trained_models` or use:
@@ -216,17 +238,69 @@ tar -xvzf ${REPO_ROOT}/trained_models/model_hypersim.tar.gz -C ${REPO_ROOT}/trai
 gdown 1x0Ud6qhqfb5DNjHmhiP9xiau5snKceWb --output ${REPO_ROOT}/trained_models/
 tar -xvzf ${REPO_ROOT}/trained_models/model_scannet.tar.gz -C ${REPO_ROOT}/trained_models/
 ```
-
-We further provide the weights for the network used for application and shown in the video above. 
-The network was pretrained on Hypersim and then subsequently trained on ScanNet and SUNRGB-D. 
-Click [here](https://drive.google.com/uc?id=1x0Ud6qhqfb5DNjHmhiP9xiau5snKceWb) to download the model.
-
 > We refer to the shipped '*_argv.txt' file next to the weights file for the training command used to obtain the weights.
 
 
+#### Application network
+We further provide the weights for the network used for application and shown in the video above.
+The network was trained simultaneously on NYUv2, Hypersim, SUNRGB-D, and ScanNet. 
+The best epoch was chosen based on the performance on the SUNRGB-D test split.
+For more details, we refer to the appendix of our paper (available on arXiv).
+Click [here](https://drive.google.com/uc?id=1oSmEPkHAFVBx7Gut6jojVTjheyQTX4S3) to download the weights and extract them to `./trained_models` or use:
+
+```bash
+python -m pip install gdown  # last tested: 4.7.1
+
+# Application network
+gdown 1oSmEPkHAFVBx7Gut6jojVTjheyQTX4S3 --output ${REPO_ROOT}/trained_models/
+tar -xvzf ${REPO_ROOT}/trained_models/model_application.tar.gz -C ${REPO_ROOT}/trained_models/
+```
+> We refer to the shipped '*_argv.txt' file next to the weights file for the training command used to obtain the weights.
+
+> We refer to the instructions given in [./trained_models](./trained_models) for reproducing the results reported in our paper.
+
+#### Fine-tuned application network
+Finally, we also provide the weights of the application network fine-tuned on each of the four datasets above individually.
+Download the weights for 
+[NYUv2](https://drive.google.com/uc?id=1yuahzuza5urbb8zVVgKGTqTwla38m6CK), 
+[SUNRGB-D (refined instance annotations proposed in this paper)](https://drive.google.com/uc?id=1jIOq29bTwe0vnzsXIldePWd3fpj42BuQ),
+[Hypersim (with camera model correction presented in this paper)](https://drive.google.com/uc?id=1OSlTk3gbK0Pt3g-yt2fwtzMXoVyE4oOA),
+[ScanNet (20 classes)](https://drive.google.com/uc?id=1fhZ5L9mPPeL1_JxxtbhKVPf-i3eWykDo), and
+[ScanNet (40 classes)](https://drive.google.com/uc?id=1oSWcjcrNDCEB9hHdB0JJBG7NI92cP7ab)
+and extract them to `./trained_models` or use:
+
+```bash
+python -m pip install gdown  # last tested: 4.7.1
+
+# Application network fine-tuned on NYUv2
+gdown 1yuahzuza5urbb8zVVgKGTqTwla38m6CK --output ${REPO_ROOT}/trained_models/
+tar -xvzf ${REPO_ROOT}/trained_models/model_application_nyuv2_finetuned.tar.gz -C ${REPO_ROOT}/trained_models/
+
+# Application network fine-tuned on SUNRGB-D (refined instance annotations proposed in this paper)
+gdown 1jIOq29bTwe0vnzsXIldePWd3fpj42BuQ --output ${REPO_ROOT}/trained_models/
+tar -xvzf ${REPO_ROOT}/trained_models/model_application_sunrgbd_finetuned.tar.gz -C ${REPO_ROOT}/trained_models/
+
+# Application network fine-tuned on Hypersim (with camera model correction presented in this paper)
+gdown 1OSlTk3gbK0Pt3g-yt2fwtzMXoVyE4oOA --output ${REPO_ROOT}/trained_models/
+tar -xvzf ${REPO_ROOT}/trained_models/model_application_hypersim_finetuned.tar.gz -C ${REPO_ROOT}/trained_models/
+
+# Application network fine-tuned on ScanNet (20 classes)
+gdown 1fhZ5L9mPPeL1_JxxtbhKVPf-i3eWykDo --output ${REPO_ROOT}/trained_models/
+tar -xvzf ${REPO_ROOT}/trained_models/model_application_scannet20_finetuned.tar.gz -C ${REPO_ROOT}/trained_models/
+
+# Application network fine-tuned on ScanNet (40 classes)
+gdown 1oSWcjcrNDCEB9hHdB0JJBG7NI92cP7ab --output ${REPO_ROOT}/trained_models/
+tar -xvzf ${REPO_ROOT}/trained_models/model_application_scannet40_finetuned.tar.gz -C ${REPO_ROOT}/trained_models/
+```
+> We refer to the shipped '*_argv.txt' file next to the weights file for the training command used to obtain the weights.
+
+> We refer to the instructions given in [./trained_models](./trained_models) for reproducing the results reported in our paper.
+
+> We refer to the documentation of our [nicr-scene-analysis-datasets python package](https://github.com/TUI-NICR/nicr-scene-analysis-datasets/tree/v0.6.0/nicr_scene_analysis_datasets/datasets/scannet) for preparing the datasets.
+
 ### Extract 2D ground truth and EMSANet predictions for evaluation / mapping
 To extract the predictions of our EMSANet model for Hypersim and ScanNet, use the `inference_dataset.py` [script](
-https://github.com/TUI-NICR/EMSANet/blob/94ed1bdcf1f3ebe67f8ea35233dc0c4e5535a124/inference_dataset.py) provided in the EMSANet submodule in `./emsanet`. 
+https://github.com/TUI-NICR/EMSANet/blob/panopticndt/inference_dataset.py) provided in the EMSANet submodule in `./emsanet`. 
 The script supports multiple output formats, specified by the `--inference-output-format` argument:
 
 - `scannet-semantic`: export semantic predictions of EMSANet and corresponding GT for the **2D semantic task**
@@ -309,27 +383,27 @@ do
       fi
     fi
 
-  python inference_dataset.py \
-    --dataset scannet \
-    --dataset-path ${DATASET_PATH} \
-    --scannet-semantic-n-classes 20 \
-    --use-original-scene-labels \
-    --tasks semantic scene instance orientation \
-    --enable-panoptic \
-    --no-pretrained-backbone \
-    --weights-filepath ${WEIGHTS_FILEPATH} \
-    --input-height 960 \
-    --input-width 1280 \
-    --instance-offset-distance-threshold 120 \
-    --inference-split ${SPLIT} \
-    --inference-scannet-subsample ${SUBSAMPLE} \
-    --inference-input-height 960 \
-    --inference-input-width 1280 \
-    --inference-output-format ${OUTPUT_FORMAT} \
-    --inference-batch-size 2 \
-    --inference-output-write-ground-truth \
-    --inference-output-semantic-instance-shift ${SHIFT}
-  done
+    python inference_dataset.py \
+      --dataset scannet \
+      --dataset-path ${DATASET_PATH} \
+      --scannet-semantic-n-classes 20 \
+      --use-original-scene-labels \
+      --tasks semantic scene instance orientation \
+      --enable-panoptic \
+      --no-pretrained-backbone \
+      --weights-filepath ${WEIGHTS_FILEPATH} \
+      --input-height 960 \
+      --input-width 1280 \
+      --instance-offset-distance-threshold 120 \
+      --inference-split ${SPLIT} \
+      --inference-scannet-subsample ${SUBSAMPLE} \
+      --inference-input-height 960 \
+      --inference-input-width 1280 \
+      --inference-output-format ${OUTPUT_FORMAT} \
+      --inference-batch-size 2 \
+      --inference-output-write-ground-truth \
+      --inference-output-semantic-instance-shift ${SHIFT}
+    done
 done
 ```
 
@@ -420,7 +494,7 @@ Ground-truth point clouds for Hypersim are created by applying a voxel-grid filt
 The most frequent annotation is used to assign a ground-truth annotation to each voxel.
 We further limit the maximum distance to a reasonable value of 20m.
 
-Use the `nicr_sa_prepare_labeled_point_clouds` entry point provided in our [nicr-scene-analysis-datasets python package](https://github.com/TUI-NICR/nicr-scene-analysis-datasets/blob/v0.5.3/nicr_scene_analysis_datasets/scripts/prepare_labeled_point_clouds.py) to create the 3D ground truth.
+Use the `nicr_sa_prepare_labeled_point_clouds` entry point provided in our [nicr-scene-analysis-datasets python package](https://github.com/TUI-NICR/nicr-scene-analysis-datasets/blob/v0.6.0/nicr_scene_analysis_datasets/scripts/prepare_labeled_point_clouds.py) to create the 3D ground truth.
 
 ```bash
 DATASET_PATH=${REPO_ROOT}/datasets/hypersim
@@ -441,7 +515,7 @@ done
 ```
 
 You can use the `nicr_sa_labeled_pc_viewer` entry point in our
-[nicr-scene-analysis-datasets python package](https://github.com/TUI-NICR/nicr-scene-analysis-datasets/blob/v0.5.3/nicr_scene_analysis_datasets/scripts/prepare_labeled_point_clouds.py) to browse the generated ground-truth data. 
+[nicr-scene-analysis-datasets python package](https://github.com/TUI-NICR/nicr-scene-analysis-datasets/blob/v0.6.0/nicr_scene_analysis_datasets/scripts/prepare_labeled_point_clouds.py) to browse the generated ground-truth data. 
 Note that the point clouds already contain RGB and label information.
 However, the viewer can also be used to visualize mapped predictions. 
 See the `--semantic-label-filepath` and `--panoptic-label-filepath` arguments in the example below. Replace the given ground-truth files with our predicted files to visualize results.
@@ -507,7 +581,7 @@ applications (MIRA).
 However, integrating our pipeline for data processing in ROS workflows is 
 straightforward.
 We refer to the dataset reader classes in our
-[nicr-scene-analysis-datasets python package](https://github.com/TUI-NICR/nicr-scene-analysis-datasets/tree/v0.5.3/nicr_scene_analysis_datasets/mira). 
+[nicr-scene-analysis-datasets python package](https://github.com/TUI-NICR/nicr-scene-analysis-datasets/tree/v0.6.0/nicr_scene_analysis_datasets/mira). 
 
 
 Once mapping is done, store the results in the following format and folder structure:
