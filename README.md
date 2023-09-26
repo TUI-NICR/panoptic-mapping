@@ -296,7 +296,7 @@ tar -xvzf ${REPO_ROOT}/trained_models/model_application_scannet40_finetuned.tar.
 
 > We refer to the instructions given in [./trained_models](./trained_models) for reproducing the results reported in our paper.
 
-> We refer to the documentation of our [nicr-scene-analysis-datasets python package](https://github.com/TUI-NICR/nicr-scene-analysis-datasets/tree/v0.6.0/nicr_scene_analysis_datasets/datasets/scannet) for preparing the datasets.
+> We refer to the documentation of our [nicr-scene-analysis-datasets python package](https://github.com/TUI-NICR/nicr-scene-analysis-datasets/tree/v0.6.0/) for preparing the datasets.
 
 ### Extract 2D ground truth and EMSANet predictions for evaluation / mapping
 To extract the predictions of our EMSANet model for Hypersim and ScanNet, use the `inference_dataset.py` [script](
