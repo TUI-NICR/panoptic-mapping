@@ -245,7 +245,7 @@ tar -xvzf ${REPO_ROOT}/trained_models/model_scannet.tar.gz -C ${REPO_ROOT}/train
 We further provide the weights for the network used for application and shown in the video above.
 The network was trained simultaneously on NYUv2, Hypersim, SUNRGB-D, and ScanNet. 
 The best epoch was chosen based on the performance on the SUNRGB-D test split.
-For more details, we refer to the appendix of our paper (available on arXiv).
+For more details, we refer to the appendix of our paper (available on [arXiv](https://arxiv.org/abs/2309.13635)).
 Click [here](https://drive.google.com/uc?id=1oSmEPkHAFVBx7Gut6jojVTjheyQTX4S3) to download the weights and extract them to `./trained_models` or use:
 
 ```bash
