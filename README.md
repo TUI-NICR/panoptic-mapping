@@ -1,6 +1,6 @@
 # PanopticNDT: Efficient and Robust Panoptic Mapping
 
-This repository contains the code for our paper "PanopticNDT: Efficient and Robust Panoptic Mapping" ([IEEE Xplore](https://ieeexplore.ieee.org/document/10342137), [arXiv](https://arxiv.org/abs/2309.13635) (with appendix and some later fixes)).
+This repository contains the code for our paper "PanopticNDT: Efficient and Robust Panoptic Mapping" ([IEEE Xplore](https://ieeexplore.ieee.org/document/10342137), [arXiv](https://arxiv.org/abs/2309.13635) (with appendix and some minor fixes - see changelog below)).
 
 <div align="center">
       <a href="https://youtu.be/xS9jCEKO-Uw"><img src="https://img.youtube.com/vi/xS9jCEKO-Uw/maxresdefault.jpg" style="width: 70%;"></a>
@@ -29,7 +29,7 @@ If you use the source code or the network weights, please cite the following pap
   pages     = {7233-7240},
 }
 
-% with appendix and some later fixes - we recommend working with this version
+% with appendix and some minor fixes - we recommend working with this version
 @article{panopticndt2023arxiv,
   title     = {{PanopticNDT: Efficient and Robust Panoptic Mapping}},
   author    = {Seichter, Daniel and Stephan, Benedict and Fischedick, S{\"o}hnke Benedikt and  Mueller, Steffen and Rabes, Leonard and Gross, Horst-Michael},
@@ -706,6 +706,11 @@ python evaluate_panoptic.py \
 - update ScanNet patch file to fix some NumPy issues in the original evaluation 
   script: `ScanNet/BenchmarkScripts/2d_evaluation/evalInstanceLevelSemanticLabeling.py`
 - some other minor fixes
+- update paper on ArXiv:
+  - fixed small issue in Eq. 5: order was not respected
+  - fixed small issue in Eq. 10: second branch was limted to stuff classes only
+  - fixed noted CPU name in tables: Intel i7-1165G7 to Intel i7-1165G7
+  - some other minor fixes (appendix only)
 
 **Sep 26, 2023**
 - initial public release
