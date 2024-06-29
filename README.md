@@ -116,7 +116,7 @@ To make it easier to set up the environment, we provide this meta repository tha
 
     ```bash
     # do not forget the '--recursive' argument to clone all submodules
-    git clone --recursive https://github.com/TUI-NICR/panoptic_mapping.git
+    git clone --recursive https://github.com/TUI-NICR/panoptic-mapping.git
 
     REPO_ROOT="/path/to/this/repository"
     ```
