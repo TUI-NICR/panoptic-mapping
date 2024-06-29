@@ -1,6 +1,6 @@
 # PanopticNDT: Efficient and Robust Panoptic Mapping
 
-This repository contains the code for our paper "PanopticNDT: Efficient and Robust Panoptic Mapping" (IEEE Xplore, [arXiv](https://arxiv.org/abs/2309.13635) (with appendix)).
+This repository contains the code for our paper "PanopticNDT: Efficient and Robust Panoptic Mapping" ([IEEE Xplore](https://ieeexplore.ieee.org/document/10342137), [arXiv](https://arxiv.org/abs/2309.13635) (with appendix and some minor fixes - see changelog below)).
 
 <div align="center">
       <a href="https://youtu.be/xS9jCEKO-Uw"><img src="https://img.youtube.com/vi/xS9jCEKO-Uw/maxresdefault.jpg" style="width: 70%;"></a>
@@ -12,29 +12,37 @@ This repository contains the code for our paper "PanopticNDT: Efficient and Robu
 The source code is published under Apache 2.0 license, see [license file](LICENSE) for details.
 
 If you use the source code or the network weights, please cite the following paper:
-> Seichter, D., Stephan, B., Fischedick, S. B., Müller, S., Rabes, L., Gross, H.-M. *PanopticNDT: Efficient and Robust Panoptic Mapping*, in IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS), 2023.
+> Seichter, D., Stephan, B., Fischedick, S. B., Müller, S., Rabes, L., Gross, H.-M. 
+  *PanopticNDT: Efficient and Robust Panoptic Mapping*, 
+  in IEEE/RSJ International Conference on Intelligent Robots and 
+  Systems (IROS), pp. 7233-7240, 2023.
+
+<details>
+<summary>BibTeX</summary>
 
 ```bibtex
 @inproceedings{panopticndt2023iros,
-  title={{PanopticNDT: Efficient and Robust Panoptic Mapping}},
-  author={Seichter, Daniel and Stephan, Benedict and Fischedick, S{\"o}hnke Benedikt and  Mueller, Steffen and Rabes, Leonard and Gross, Horst-Michael},
-  booktitle={IEEE/RSJ Int. Conf. on Intelligent Robots and Systems (IROS)},
-  year={2023}
+  title     = {{PanopticNDT: Efficient and Robust Panoptic Mapping}},
+  author    = {Seichter, Daniel and Stephan, Benedict and Fischedick, S{\"o}hnke Benedikt and  Mueller, Steffen and Rabes, Leonard and Gross, Horst-Michael},
+  booktitle = {IEEE/RSJ Int. Conf. on Intelligent Robots and Systems (IROS)},
+  year      = {2023},
+  pages     = {7233-7240},
 }
 
-# with appendix
+% with appendix and some minor fixes - we recommend working with this version
 @article{panopticndt2023arxiv,
-  title={{PanopticNDT: Efficient and Robust Panoptic Mapping}},
-  author={Seichter, Daniel and Stephan, Benedict and Fischedick, S{\"o}hnke Benedikt and  Mueller, Steffen and Rabes, Leonard and Gross, Horst-Michael},
-  journal={arXiv preprint arXiv:2309.13635},
-  year={2023}
+  title     = {{PanopticNDT: Efficient and Robust Panoptic Mapping}},
+  author    = {Seichter, Daniel and Stephan, Benedict and Fischedick, S{\"o}hnke Benedikt and  Mueller, Steffen and Rabes, Leonard and Gross, Horst-Michael},
+  journal   = {arXiv preprint arXiv:2309.13635},
+  year      = {2023}
 }
 ```
+</details>
 
 
 ## Overview
 Given a precise localization in the environment, our panoptic mapping approach comprises two steps. 
-We first apply [EMSANet](https://github.com/TUI-NICR/EMSANet/tree/panopticndt) – an efficient RGB-D panoptic segmentation approach – to the current set of input images (color and depth). 
+We first apply [EMSANet](https://github.com/TUI-NICR/EMSANet/tree/release_2024_06_27) – an efficient RGB-D panoptic segmentation approach – to the current set of input images (color and depth). 
 Unlike other approaches, we decided in favor of an RGB-D approach as depth provides complementary information that helps segmenting cluttered indoor scenes. 
 Afterward, the obtained panoptic segmentation, the depth image, and the current pose are passed to the panoptic mapping stage.
 
@@ -84,15 +92,20 @@ Follow the steps below to reproduce results or to integrate parts in our pipelin
      - [Mapping experiments](#mapping-experiments)
      - [Application network](#application-network)
      - [Fine-tuned application network](#fine-tuned-application-network)
-- [Extract 2D ground truth and EMSANet predictions for evaluation / mapping](#extract-2d-ground-truth-and-emsanet-predictions-for-evaluation-mapping)
+- [Extract 2D ground truth and EMSANet predictions for evaluation / mapping](#extract-2d-ground-truth-and-emsanet-predictions-for-evaluation--mapping)
      - [Hypersim](#hypersim-1)
      - [ScanNet](#scannet-1)
 - [Reproduce reported EMSANet results](#reproduce-reported-emsanet-results)
      - [Hypersim](#hypersim-2)
      - [ScanNet](#scannet-2)
 - [Extract 3D ground truth](#extract-3d-ground-truth)
+     - [Hypersim](#hypersim-3)
+     - [ScanNet](#scannet-3)
 - [Run mapping experiments](#run-mapping-experiments)
 - [Evaluate mapping results](#evaluate-mapping-results)
+     - [2D evaluation](#2d-evaluation-1)
+     - [3D evaluation](#3d-evaluation-1)
+- [Changelog](#changelog)
 
 
 ### Setup and environment
@@ -103,7 +116,7 @@ To make it easier to set up the environment, we provide this meta repository tha
 
     ```bash
     # do not forget the '--recursive' argument to clone all submodules
-    git clone --recursive https://github.com/TUI-NICR/panoptic_mapping.git
+    git clone --recursive https://github.com/TUI-NICR/panoptic-mapping.git
 
     REPO_ROOT="/path/to/this/repository"
     ```
@@ -112,7 +125,13 @@ To make it easier to set up the environment, we provide this meta repository tha
 
     ```bash
     # create conda environment from YAML file
-    conda env create -f panoptic_mapping.yaml
+    
+    # option 1: latest tested version (Python 3.11.0, PyTorch 2.3, Open3D 0.18.0)
+    conda env create -f panoptic_mapping_2024.yml
+    conda activate panoptic_mapping_2024
+
+    # option 2: original publication (Python 3.8.16, PyTorch 1.13.0)
+    conda env create -f panoptic_mapping.yml
     conda activate panoptic_mapping
     ```
 
@@ -120,18 +139,19 @@ To make it easier to set up the environment, we provide this meta repository tha
 
     ```bash
     # dataset package - required for preparing the datasets and EMSANet
-    python -m pip install -e ${REPO_ROOT}/emsanet/lib/nicr-scene-analysis-datasets[withpreparation,with3d]
+    python -m pip install -e "${REPO_ROOT}/emsanet/lib/nicr-scene-analysis-datasets[withpreparation,with3d]"
     
     # multi-task scene analysis package - required for EMSANet and metric calculation
-    python -m pip install -e ${REPO_ROOT}/emsanet/lib/nicr-multitask-scene-analysis
+    python -m pip install -e "${REPO_ROOT}/emsanet/lib/nicr-multitask-scene-analysis"
     ```
 
-4. Patch ScanNet submodule:
-    We have modified the ScanNet benchmark scripts to:
-    - support Python 3.X
-    - support the Hypersim dataset (requires changing label representation from *sem\*1000+ins* to *sem\*(1<<16)+ins*, as Hypersim has more than 1000 instances in a scene)
-    - feature a panoptic evaluation tasks in both 2D and 3D
-    - write results as *.json files in addition to existing *.txt files (enables parsing of results)
+4. Patch [ScanNet](https://github.com/ScanNet/ScanNet) submodule:
+    We have modified the ScanNet benchmark scripts:
+    - to support Python 3.X
+    - to support recent NumPy versions (fixes for np.bool vs bool, ...)
+    - to support the Hypersim dataset (requires changing label representation from *sem\*1000+ins* to *sem\*(1<<16)+ins*, as Hypersim has more than 1000 instances in a scene)
+    - to feature a panoptic evaluation tasks in both 2D and 3D as well
+    - to write results as *.json files in addition to existing *.txt files (simplifies automatic results parsing)
 
     The patch below applies all the changes required to the original ScanNet benchmark code.
 
@@ -145,13 +165,13 @@ To make it easier to set up the environment, we provide this meta repository tha
 
 5. Build Cython extension for faster 2D semantic evaluation:
 
-    The published original ScanNet benchmark script for the **2D semantic task** is very slow.
+    The published original ScanNet benchmark script for the **2D semantic task** is very slow and cannot handle the void class.
     Therefore, we re-added the Cython implementation from [cityscapesScripts](https://github.com/mcordts/cityscapesScripts/tree/master/cityscapesscripts/evaluation) for faster evaluation.
     Follow the instructions below to compile the extension to get results in a fraction of the time.
 
     ```bash
     # install cython
-    python -m pip install cython   # last tested: 0.29.33
+    python -m pip install cython   # last tested: 3.0.10
     
     # build extension
     cd ${REPO_ROOT}/evaluation/ScanNet/BenchmarkScripts/2d_evaluation
@@ -161,7 +181,7 @@ To make it easier to set up the environment, we provide this meta repository tha
 
 
 ### Prepare data
-We provide scripts that automate dataset preparation along with our [nicr-scene-analysis-datasets python package](https://github.com/TUI-NICR/nicr-scene-analysis-datasets/tree/v0.6.0).
+We provide scripts that automate dataset preparation along with our [nicr-scene-analysis-datasets python package](https://github.com/TUI-NICR/nicr-scene-analysis-datasets/tree/v0.7.0).
 
 
 #### Hypersim
@@ -187,7 +207,7 @@ nicr_sa_prepare_dataset hypersim \
 # rm -rf $HYPERSIM_DOWNLOAD_PATH  
 ```
 
-We refer to the documentation of our [nicr-scene-analysis-datasets python package](https://github.com/TUI-NICR/nicr-scene-analysis-datasets/tree/v0.6.0/nicr_scene_analysis_datasets/datasets/hypersim) for further details.
+We refer to the documentation of our [nicr-scene-analysis-datasets python package](https://github.com/TUI-NICR/nicr-scene-analysis-datasets/tree/v0.7.0/nicr_scene_analysis_datasets/datasets/hypersim) for further details.
 
 
 #### ScanNet
@@ -217,7 +237,7 @@ nicr_sa_prepare_dataset scannet \
 # rm -rf $SCANNET_DOWNLOAD_PATH  
 ```   
 
-We refer to the documentation of our [nicr-scene-analysis-datasets python package](https://github.com/TUI-NICR/nicr-scene-analysis-datasets/tree/v0.6.0/nicr_scene_analysis_datasets/datasets/scannet) for further details.
+We refer to the documentation of our [nicr-scene-analysis-datasets python package](https://github.com/TUI-NICR/nicr-scene-analysis-datasets/tree/v0.7.0/nicr_scene_analysis_datasets/datasets/scannet) for further details.
 
 
 ### Download pretrained models
@@ -228,7 +248,7 @@ We provide the weights of our EMSANet-R34-NBt1D (enhanced ResNet34-based encoder
 Download the weights for [Hypersim](https://drive.google.com/uc?id=1gbu2H9zh7-1kGW8-NI_6eU3mcW_J0j-l) and [ScanNet](https://drive.google.com/uc?id=1x0Ud6qhqfb5DNjHmhiP9xiau5snKceWb) and extract them to `./trained_models` or use:
 
 ```bash
-python -m pip install gdown  # last tested: 4.7.1
+python -m pip install gdown  # last tested: 5.2.0
 
 # Hypersim
 gdown 1gbu2H9zh7-1kGW8-NI_6eU3mcW_J0j-l --output ${REPO_ROOT}/trained_models/
@@ -249,7 +269,7 @@ For more details, we refer to the appendix of our paper (available on [arXiv](ht
 Click [here](https://drive.google.com/uc?id=1oSmEPkHAFVBx7Gut6jojVTjheyQTX4S3) to download the weights and extract them to `./trained_models` or use:
 
 ```bash
-python -m pip install gdown  # last tested: 4.7.1
+python -m pip install gdown  # last tested: 5.2.0
 
 # Application network
 gdown 1oSmEPkHAFVBx7Gut6jojVTjheyQTX4S3 --output ${REPO_ROOT}/trained_models/
@@ -270,7 +290,7 @@ Download the weights for
 and extract them to `./trained_models` or use:
 
 ```bash
-python -m pip install gdown  # last tested: 4.7.1
+python -m pip install gdown  # last tested: 5.2.0
 
 # Application network fine-tuned on NYUv2
 gdown 1yuahzuza5urbb8zVVgKGTqTwla38m6CK --output ${REPO_ROOT}/trained_models/
@@ -296,7 +316,7 @@ tar -xvzf ${REPO_ROOT}/trained_models/model_application_scannet40_finetuned.tar.
 
 > We refer to the instructions given in [./trained_models](./trained_models) for reproducing the results reported in our paper.
 
-> We refer to the documentation of our [nicr-scene-analysis-datasets python package](https://github.com/TUI-NICR/nicr-scene-analysis-datasets/tree/v0.6.0/) for preparing the datasets.
+> We refer to the documentation of our [nicr-scene-analysis-datasets python package](https://github.com/TUI-NICR/nicr-scene-analysis-datasets/tree/v0.7.0/) for preparing the datasets.
 
 ### Extract 2D ground truth and EMSANet predictions for evaluation / mapping
 To extract the predictions of our EMSANet model for Hypersim and ScanNet, use the `inference_dataset.py` [script](
@@ -403,7 +423,8 @@ do
       --inference-batch-size 2 \
       --inference-output-write-ground-truth \
       --inference-output-semantic-instance-shift ${SHIFT}
-    done
+      
+  done
 done
 ```
 
@@ -494,7 +515,7 @@ Ground-truth point clouds for Hypersim are created by applying a voxel-grid filt
 The most frequent annotation is used to assign a ground-truth annotation to each voxel.
 We further limit the maximum distance to a reasonable value of 20m.
 
-Use the `nicr_sa_prepare_labeled_point_clouds` entry point provided in our [nicr-scene-analysis-datasets python package](https://github.com/TUI-NICR/nicr-scene-analysis-datasets/blob/v0.6.0/nicr_scene_analysis_datasets/scripts/prepare_labeled_point_clouds.py) to create the 3D ground truth.
+Use the `nicr_sa_prepare_labeled_point_clouds` entry point provided in our [nicr-scene-analysis-datasets python package](https://github.com/TUI-NICR/nicr-scene-analysis-datasets/blob/v0.7.0/nicr_scene_analysis_datasets/scripts/prepare_labeled_point_clouds.py) to create the 3D ground truth.
 
 ```bash
 DATASET_PATH=${REPO_ROOT}/datasets/hypersim
@@ -510,12 +531,12 @@ do
     --split ${SPLIT} \
     --voxel-size 0.01 \
     --max-depth 20 \
-    --write-scannet-label
+    --write-scannet-benchmark-ground-truth
 done
 ```
 
 You can use the `nicr_sa_labeled_pc_viewer` entry point in our
-[nicr-scene-analysis-datasets python package](https://github.com/TUI-NICR/nicr-scene-analysis-datasets/blob/v0.6.0/nicr_scene_analysis_datasets/scripts/prepare_labeled_point_clouds.py) to browse the generated ground-truth data. 
+[nicr-scene-analysis-datasets python package](https://github.com/TUI-NICR/nicr-scene-analysis-datasets/blob/v0.7.0/nicr_scene_analysis_datasets/scripts/prepare_labeled_point_clouds.py) to browse the generated ground-truth data. 
 Note that the point clouds already contain RGB and label information.
 However, the viewer can also be used to visualize mapped predictions. 
 See the `--semantic-label-filepath` and `--panoptic-label-filepath` arguments in the example below. Replace the given ground-truth files with our predicted files to visualize results.
@@ -581,7 +602,7 @@ applications (MIRA).
 However, integrating our pipeline for data processing in ROS workflows is 
 straightforward.
 We refer to the dataset reader classes in our
-[nicr-scene-analysis-datasets python package](https://github.com/TUI-NICR/nicr-scene-analysis-datasets/tree/v0.6.0/nicr_scene_analysis_datasets/mira). 
+[nicr-scene-analysis-datasets python package](https://github.com/TUI-NICR/nicr-scene-analysis-datasets/tree/v0.7.0/nicr_scene_analysis_datasets/mira). 
 
 
 Once mapping is done, store the results in the following format and folder structure:
@@ -649,14 +670,14 @@ SPLIT="valid"       # valid / test for hypersim, test for scannet
 GT_BASEPATH=${REPO_ROOT}/datasets/${DATASET}_3d/${SPLIT}/scannet_benchmark_gt
 PRED_BASEPATH="/path/to/your/3d_results"
 
-# 3D semantic task (note, this evaluation is quite slow)
+# 3D semantic task - might be quite slow for hypersim
 python evaluate_semantic_label.py \
   --dataset ${DATASET} \
   --pred_path ${PRED_BASEPATH}/semantic \
   --gt_path ${GT_BASEPATH}/semantic \
   --output_file ${PRED_BASEPATH}/evaluation_semantic.txt
 
-# 3D semantic-instance task (instance)
+# 3D semantic-instance task (instance) - might be quite slow for hypersim
 python evaluate_semantic_instance.py \
   --dataset ${DATASET} \
   --shift $((2**16)) \
@@ -664,7 +685,7 @@ python evaluate_semantic_instance.py \
   --gt_path ${GT_BASEPATH}/semantic_instance \
   --output_file ${PRED_BASEPATH}/evaluation_semantic_instance.txt
 
-# 3D panoptic task
+# 3D panoptic task - much faster than the other two benchmarks
 python evaluate_panoptic.py \
   --dataset ${DATASET} \
   --shift $((2**16)) \
@@ -672,3 +693,24 @@ python evaluate_panoptic.py \
   --gt_path ${GT_BASEPATH}/semantic_instance \
   --output_file ${PRED_BASEPATH}/evaluation_panoptic.json
 ```
+
+## Changelog
+
+**Jun 29, 2024**
+- update EMSANet submodule to latest version:
+  - with `lib/nicr-scene-analysis-datasets` v0.7.0
+  - with`lib/nicr-multitask-scene-analysis` v0.2.3
+  - there is no need anymore to use a specific branch in EMSANet repository 
+- add more recent environment file (Python 3.11.0, PyTorch 2.3, Open3D 0.18.0) 
+- small fix in proposed `ScanNet/BenchmarkScripts/2d_evaluation/evalPanopticLevelSemanticLabeling.py`
+- update ScanNet patch file to fix some NumPy issues in the original evaluation 
+  script: `ScanNet/BenchmarkScripts/2d_evaluation/evalInstanceLevelSemanticLabeling.py`
+- some other minor fixes
+- update paper on arXiv:
+  - fixed small issue in Eq. 5: order was not respected
+  - fixed small issue in Eq. 10: second branch was limted to stuff classes only
+  - fixed noted CPU name in tables: Intel i7-1165G7 to Intel i7-1165G7
+  - some other minor fixes (appendix only)
+
+**Sep 26, 2023**
+- initial public release

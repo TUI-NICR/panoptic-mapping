@@ -115,6 +115,6 @@ core
 evaluation/ScanNet_ours
 
 # data
-datasets/hypersim
-datasets/scannet
+datasets/hypersim*
+datasets/scannet*
 trained_models/*
