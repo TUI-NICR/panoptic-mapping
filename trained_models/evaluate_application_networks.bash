@@ -19,10 +19,10 @@ if [[ $(hostname) == *"makalu"* ]]; then
     BATCH_SIZE=16
 elif [[ $(hostname) == *"apfel1"* ]]; then
     # datasets
-    BASEPATH_NYUV2="/datasets_nas/nicr_scene_analysis_datasets/version_060/nyuv2"
-    BASEPATH_HYPERSIM="/datasets_nas/nicr_scene_analysis_datasets/version_060/hypersim"
-    BASEPATH_SUNRGBD="/datasets_nas/nicr_scene_analysis_datasets/version_060/sunrgbd"
-    BASEPATH_SCANNET="/datasets_nas/nicr_scene_analysis_datasets/version_060/scannet"
+    BASEPATH_NYUV2="/datasets_nas/nicr_scene_analysis_datasets/version_070/nyuv2"
+    BASEPATH_HYPERSIM="/datasets_nas/nicr_scene_analysis_datasets/version_070/hypersim"
+    BASEPATH_SUNRGBD="/datasets_nas/nicr_scene_analysis_datasets/version_070/sunrgbd"
+    BASEPATH_SCANNET="/datasets_nas/nicr_scene_analysis_datasets/version_070/scannet"
 
     BATCH_SIZE=1
 else

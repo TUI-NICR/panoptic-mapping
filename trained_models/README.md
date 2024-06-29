@@ -18,4 +18,7 @@ To reprocduce the results reported in our paper, run:
 ./evaluate_application_networks.bash
 ```
 
-> We refer to the documentation of our [nicr-scene-analysis-datasets python package](https://github.com/TUI-NICR/nicr-scene-analysis-datasets/tree/v0.6.0/) for preparing the datasets.
+> We refer to the documentation of our [nicr-scene-analysis-datasets python package](https://github.com/TUI-NICR/nicr-scene-analysis-datasets/tree/v0.7.0/) for preparing the datasets.
+
+> Use `--instances-version panopticndt` when preparing the SUNRGB-D dataset 
+  with nicr-scene-analysis-datasets to reproduce reported results.
